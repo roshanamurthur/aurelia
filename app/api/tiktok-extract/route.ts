@@ -83,50 +83,59 @@ export async function POST(req: NextRequest) {
     maxRetries: 3,
   });
 
-  const task = `You are on a TikTok video page. Your goal is to extract the recipe shown in this video.
+  const task = `You are opening a TikTok video page. Follow these steps:
 
-Read everything visible on the page:
-1. The video caption/description text below the video
-2. Any on-screen text overlays showing ingredients or cooking steps
-3. The pinned comment or top comments (creators often post the full recipe there)
-4. The creator's username (@handle)
+1. If you see a cookie banner or "Accept" button, click it to dismiss.
+2. If you see a login popup or "Log in" overlay, close it (click X or click outside).
+3. Find the video description/caption. If it is truncated (shows "...more" or "See more"), click to expand it.
+4. Read the full description text and note the creator's @handle.
 
-Extract and return ONLY a JSON object (no other text):
+Now extract the recipe from the description and return ONLY a JSON object:
 {
   "dishName": "the name of the dish",
   "ingredients": [
-    {"name": "ingredient name", "amount": 2, "unit": "cups"},
-    ...
+    {"name": "ingredient name", "amount": 2, "unit": "cups"}
   ],
-  "instructions": "step by step cooking instructions as a single string",
-  "calories": number or null,
-  "protein": number or null,
-  "carbs": number or null,
-  "fat": number or null,
+  "instructions": "step by step cooking instructions",
+  "calories": null,
+  "protein": null,
+  "carbs": null,
+  "fat": null,
   "creator": "@username"
 }
 
 Rules:
+- The recipe is in the caption/description text.
 - If ingredient amounts aren't specified, estimate reasonable portions for 2 servings.
-- For calories/protein/carbs/fat, only include if explicitly mentioned in the video or caption. Otherwise use null.
+- Only fill calories/protein/carbs/fat if explicitly mentioned, otherwise null.
 - If this is NOT a recipe/food video, return: {"dishName": null}
-- Return ONLY the JSON, no markdown formatting or extra text.`;
+- Return ONLY the JSON, no markdown or extra text.`;
 
   const startMs = Date.now();
   let sessionLiveUrl: string | null = null;
+
+  // Create session ONCE outside the retry loop
+  let session;
+  try {
+    session = await client.sessions.create({
+      profileId,
+      startUrl: videoUrl,
+    });
+    sessionLiveUrl = session.liveUrl ?? null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to create browser session", details: message },
+      { status: 500 }
+    );
+  }
+
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const session = await client.sessions.create({
-        profileId,
-        startUrl: videoUrl,
-      });
-      sessionLiveUrl = session.liveUrl ?? null;
-
       const result = await client.run(task, {
         sessionId: session.id,
-        allowedDomains: ["tiktok.com", "www.tiktok.com"],
       });
 
       const elapsedMs = Date.now() - startMs;

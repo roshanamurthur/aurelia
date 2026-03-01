@@ -858,7 +858,7 @@ export default function MealPlanPage() {
                                                     rel="noopener noreferrer"
                                                     className="block text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline truncate"
                                                   >
-                                                    View recipe →
+                                                    {meal.sourceUrl?.includes("tiktok.com") ? "View TikTok →" : "View recipe →"}
                                                   </a>
                                                 )}
                                               </div>
