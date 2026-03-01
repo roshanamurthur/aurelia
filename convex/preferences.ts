@@ -61,8 +61,8 @@ export const clearTakeoutForEmail = mutation({
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
       .unique();
     if (!prefs) return { success: true, message: "No preferences found" };
-    await ctx.db.patch(prefs._id, { takeoutDays: [], takeoutSlots: [] });
-    return { success: true, message: "Cleared takeoutDays and takeoutSlots" };
+    await ctx.db.patch(prefs._id, { takeoutDays: [], takeoutSlots: [], dineoutDays: [], dineoutSlots: [] });
+    return { success: true, message: "Cleared takeoutDays, takeoutSlots, dineoutDays, and dineoutSlots" };
   },
 });
 
@@ -83,6 +83,8 @@ export const update = mutation({
     deliveryAddress: v.optional(v.string()),
     takeoutDays: v.optional(v.array(v.string())),
     takeoutSlots: v.optional(v.array(v.string())),
+    dineoutDays: v.optional(v.array(v.string())),
+    dineoutSlots: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);

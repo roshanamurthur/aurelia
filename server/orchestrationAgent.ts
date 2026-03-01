@@ -93,6 +93,13 @@ export async function handleUserMessage(
 
     const message = response.choices[0].message;
 
+    // Trace: log what the LLM decided to do
+    if (message.tool_calls?.length) {
+      console.log(`[orchestrator] iter=${iteration} tool_calls=[${message.tool_calls.map((tc: any) => tc.function?.name).join(", ")}]`);
+    } else {
+      console.log(`[orchestrator] iter=${iteration} text_reply (${(message.content || "").length} chars)`);
+    }
+
     // Step 2: Add assistant response to history
     conversationHistory.push(message);
 
@@ -131,13 +138,16 @@ export async function handleUserMessage(
           }
           try {
             const args = JSON.parse(toolCall.function.arguments);
+            console.log(`[orchestrator] → ${toolCall.function.name}(${JSON.stringify(args).slice(0, 200)})`);
             const result = await handler(args);
+            console.log(`[orchestrator] ← ${toolCall.function.name} ok`);
             return {
               role: "tool" as const,
               tool_call_id: toolCall.id,
               content: JSON.stringify(result),
             };
           } catch (error: any) {
+            console.error(`[orchestrator] ← ${toolCall.function.name} ERROR: ${error.message}`);
             return {
               role: "tool" as const,
               tool_call_id: toolCall.id,

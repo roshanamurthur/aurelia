@@ -84,6 +84,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
             items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
             description: "Which meals are takeout on takeoutDays. e.g. ['dinner'] or ['lunch','dinner']. Default dinner only if unspecified.",
           },
+          dineoutDays: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            },
+            description: "Days for dine-out (OpenTable reservations). e.g. ['friday', 'saturday'].",
+          },
+          dineoutSlots: {
+            type: "array",
+            items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+            description: "Which meals are dine-out on dineoutDays. e.g. ['dinner']. Default dinner only if unspecified.",
+          },
         },
         required: [],
       },

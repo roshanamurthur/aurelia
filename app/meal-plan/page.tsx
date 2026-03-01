@@ -5,7 +5,7 @@ import DineOutReservationButton from "@/app/components/DineOutReservationButton"
 import SignOutButton from "@/app/components/SignOutButton";
 import TakeoutOrderButton from "@/app/components/TakeoutOrderButton";
 import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
-import { getDefaultTimeForRestaurant, SF_RESTAURANTS } from "@/lib/sfRestaurants";
+import { getDefaultTimeForRestaurant } from "@/lib/sfRestaurants";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -68,7 +68,7 @@ export default function MealPlanPage() {
     >
   >({});
   const [scheduleToast, setScheduleToast] = useState<{ success: number; failed: number } | null>(null);
-  const [addingDineOut, setAddingDineOut] = useState(false);
+  // Removed addingDineOut state — test button was hardcoded dev tool
 
   useEffect(() => {
     setSelectedGroceryIndices(new Set());
@@ -104,8 +104,14 @@ export default function MealPlanPage() {
     const weekEnd = weekStart ? new Date(weekStart) : null;
     if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 6);
 
+    // Start from today OR the plan's weekStart, whichever is earlier.
+    // This ensures the full plan week is always visible even if today
+    // falls before the plan start (e.g. Sunday before a Monday plan).
+    const windowStart =
+      weekStart && today < weekStart ? weekStart : today;
+
     for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
+      const d = new Date(windowStart);
       d.setDate(d.getDate() + i);
       const dayName = getDayName(d);
       const label =
@@ -117,8 +123,6 @@ export default function MealPlanPage() {
         weekEnd &&
         d >= weekStart &&
         d <= weekEnd;
-      // When in plan, use dayName for Convex lookup; when outside, null (no plan meals)
-      const planDayName = inPlan ? dayName : null;
       out.push({
         date: d,
         label,
@@ -444,36 +448,9 @@ export default function MealPlanPage() {
     setTimeout(() => setScheduleToast(null), 5000);
   };
 
-  const handleAddTestDineOutSlots = async () => {
-    if (!activePlan?._id) return;
-    setAddingDineOut(true);
-    try {
-      await upsertMeal({
-        mealPlanId: activePlan._id,
-        day: "friday",
-        mealType: "dinner",
-        recipeId: "dineout-opentable",
-        recipeName: SF_RESTAURANTS[0]!.name,
-        isTakeout: true,
-        takeoutService: "opentable",
-        takeoutDetails: "19:00",
-        isManualOverride: true,
-      });
-      await upsertMeal({
-        mealPlanId: activePlan._id,
-        day: "saturday",
-        mealType: "dinner",
-        recipeId: "dineout-opentable",
-        recipeName: SF_RESTAURANTS[1]!.name,
-        isTakeout: true,
-        takeoutService: "opentable",
-        takeoutDetails: "19:00",
-        isManualOverride: true,
-      });
-    } finally {
-      setAddingDineOut(false);
-    }
-  };
+  // Removed: handleAddTestDineOutSlots was a hardcoded dev tool that always
+  // wrote Friday/Saturday dinners. Dine-out slots are now managed dynamically
+  // through the chat agent via update_preferences + populate_meal_plan.
 
   // Maps ingredient labels → Spoonacular CDN slugs. Source: https://img.spoonacular.com/ingredients_100x100/{slug}.jpg
   // See docs/INGREDIENT_ICONS.md for how to add more.
@@ -963,15 +940,6 @@ export default function MealPlanPage() {
                     })()}
                   </h1>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleAddTestDineOutSlots}
-                      disabled={addingDineOut}
-                      className="px-3 py-2 rounded-xl text-xs font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50"
-                      title="Add Friday and Saturday dinner as OpenTable slots for testing"
-                    >
-                      {addingDineOut ? "Adding…" : "Add test dine-out"}
-                    </button>
                     <button
                       type="button"
                       onClick={handleScheduleAll}

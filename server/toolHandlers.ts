@@ -10,7 +10,7 @@ import { ConvexHttpClient } from "convex/browser";
 import Supermemory from "supermemory";
 import { api } from "../convex/_generated/api";
 import { SF_MEALS, pickTakeoutMealForSlot } from "./sfMeals";
-import { pickRestaurantForSlot } from "./sfRestaurants";
+import { SF_RESTAURANTS, pickRestaurantForSlot } from "./sfRestaurants";
 
 export function createToolHandlers(authToken: string) {
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -201,10 +201,35 @@ export function createToolHandlers(authToken: string) {
       const days = (args.days as string[]).map((d: string) => d.toLowerCase());
       const mealSlots = (args.mealSlots as string[]).map((s: string) => s.toLowerCase());
       const excludeRecipeIds = args.excludeRecipeIds || [];
-      const takeoutDays = ((args.takeoutDays as string[]) || []).map((d: string) => d.toLowerCase());
-      const takeoutSlots = ((args.takeoutSlots as string[]) || ["dinner"]).map((s: string) => s.toLowerCase());
-      const dineoutDays = ((args.dineoutDays as string[]) || []).map((d: string) => d.toLowerCase());
-      const dineoutSlots = ((args.dineoutSlots as string[]) || ["dinner"]).map((s: string) => s.toLowerCase());
+
+      // Auto-read takeout/dineout prefs from Convex if not explicitly passed
+      let takeoutDaysRaw: string[] = args.takeoutDays || [];
+      let takeoutSlotsRaw: string[] = args.takeoutSlots || [];
+      let dineoutDaysRaw: string[] = args.dineoutDays || [];
+      let dineoutSlotsRaw: string[] = args.dineoutSlots || [];
+
+      if (takeoutDaysRaw.length === 0 && dineoutDaysRaw.length === 0) {
+        try {
+          const prefs = await convex.query(api.preferences.get, {});
+          if (prefs) {
+            takeoutDaysRaw = prefs.takeoutDays || [];
+            takeoutSlotsRaw = prefs.takeoutSlots || [];
+            dineoutDaysRaw = (prefs as any).dineoutDays || [];
+            dineoutSlotsRaw = (prefs as any).dineoutSlots || [];
+          }
+        } catch {
+          // Non-fatal: proceed without preference-based takeout/dineout
+        }
+      }
+
+      const takeoutDays = takeoutDaysRaw.map((d: string) => d.toLowerCase());
+      const takeoutSlots = takeoutSlotsRaw.length > 0
+        ? takeoutSlotsRaw.map((s: string) => s.toLowerCase())
+        : takeoutDays.length > 0 ? ["dinner"] : [];
+      const dineoutDays = dineoutDaysRaw.map((d: string) => d.toLowerCase());
+      const dineoutSlots = dineoutSlotsRaw.length > 0
+        ? dineoutSlotsRaw.map((s: string) => s.toLowerCase())
+        : dineoutDays.length > 0 ? ["dinner"] : [];
       const isTakeoutSlot = (day: string, slot: string) =>
         takeoutDays.includes(day) && takeoutSlots.includes(slot);
       const isDineoutSlot = (day: string, slot: string) =>
