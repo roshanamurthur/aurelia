@@ -158,6 +158,109 @@ export const upsertMeal = mutation({
   },
 });
 
+export const getMealsByPlanId = query({
+  args: {
+    mealPlanId: v.id("mealPlans"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const plan = await ctx.db.get(args.mealPlanId);
+    if (!plan || plan.userId !== userId) throw new Error("Not authorized");
+    return await ctx.db
+      .query("plannedMeals")
+      .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", args.mealPlanId))
+      .collect();
+  },
+});
+
+export const batchUpsertMeals = mutation({
+  args: {
+    mealPlanId: v.id("mealPlans"),
+    meals: v.array(
+      v.object({
+        day: v.string(),
+        mealType: v.string(),
+        recipeId: v.string(),
+        recipeName: v.string(),
+        recipeImageUrl: v.optional(v.string()),
+        sourceUrl: v.optional(v.string()),
+        calories: v.optional(v.number()),
+        protein: v.optional(v.number()),
+        carbs: v.optional(v.number()),
+        fat: v.optional(v.number()),
+        ingredients: v.optional(
+          v.array(
+            v.object({
+              name: v.string(),
+              amount: v.number(),
+              unit: v.string(),
+            })
+          )
+        ),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const plan = await ctx.db.get(args.mealPlanId);
+    if (!plan || plan.userId !== userId) throw new Error("Not authorized");
+
+    const results = [];
+    for (const meal of args.meals) {
+      const existing = await ctx.db
+        .query("plannedMeals")
+        .withIndex("by_mealPlanId_day_mealType", (q) =>
+          q
+            .eq("mealPlanId", args.mealPlanId)
+            .eq("day", meal.day)
+            .eq("mealType", meal.mealType)
+        )
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          recipeId: meal.recipeId,
+          recipeName: meal.recipeName,
+          recipeImageUrl: meal.recipeImageUrl,
+          sourceUrl: meal.sourceUrl,
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fat: meal.fat,
+          ingredients: meal.ingredients,
+          isManualOverride: false,
+          isSkipped: false,
+          isTakeout: undefined,
+          takeoutService: undefined,
+          takeoutDetails: undefined,
+        });
+        results.push({ day: meal.day, mealType: meal.mealType, updated: true });
+      } else {
+        await ctx.db.insert("plannedMeals", {
+          mealPlanId: args.mealPlanId,
+          userId,
+          day: meal.day,
+          mealType: meal.mealType,
+          recipeId: meal.recipeId,
+          recipeName: meal.recipeName,
+          recipeImageUrl: meal.recipeImageUrl,
+          sourceUrl: meal.sourceUrl,
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fat: meal.fat,
+          ingredients: meal.ingredients,
+          isManualOverride: false,
+        });
+        results.push({ day: meal.day, mealType: meal.mealType, updated: false });
+      }
+    }
+    return { success: true, mealsWritten: results.length, results };
+  },
+});
+
 export const skipMeal = mutation({
   args: {
     mealPlanId: v.id("mealPlans"),

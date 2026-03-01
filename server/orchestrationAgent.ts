@@ -26,7 +26,7 @@ RULES:
 2. For preference updates: call update_preferences first, then re-evaluate affected meals in the current plan. Skip meals where isManualOverride is true.
 3. For one-time plan edits: modify the plan directly. Do NOT update preferences.
 4. INGREDIENT PERSISTENCE: When calling update_meal for home-cooked meals, ALWAYS include the complete ingredients array from search_recipes or get_recipe_details. If search_recipes didn't return ingredients, call get_recipe_details first. Meals without ingredients produce empty grocery lists.
-5. When populating a full weekly plan, get preferences first, then search and assign meals for each slot.
+5. When populating a full weekly plan: get preferences, create the plan, then call populate_meal_plan ONCE with the dietary constraints. Do NOT call search_recipes + update_meal individually for each slot — that is slow. Only use search_recipes + update_meal for individual meal swaps after the plan exists.
 6. Before initiating any order (DoorDash, Instacart, OpenTable), confirm the details with the user.
 7. After modifying the plan, offer to regenerate the grocery list if relevant.
 8. TAKEOUT HANDLING: When the user requests takeout or delivery for a meal slot, do NOT search Spoonacular. Instead call update_meal with isTakeout=true, a placeholder recipeId (e.g. "takeout-doordash"), takeoutService set to the service, and the meal name as recipeName. Then call the appropriate ordering tool (initiate_doordash_order, etc.). If the user doesn't specify a service, ask which one they'd like.
@@ -35,19 +35,15 @@ RULES:
 11. Be conversational and helpful. If the user hasn't set preferences yet, guide them through setting up their dietary preferences before generating a plan.
 12. Today's date is ${new Date().toISOString().split("T")[0]}. Use the Monday of the current week as the default weekStartDate unless the user specifies otherwise.
 13. After generating a complete initial meal plan with all requested meal slots filled, call intake_complete. Only call this once during first plan generation, not for ongoing modifications.
-14. VARIETY IS CRITICAL. When populating a weekly meal plan:
-    - Search with DIFFERENT query keywords for each meal type. E.g., "eggs" for one breakfast, "pancakes" for another, "smoothie bowl" for a third.
-    - Vary cuisines across the week (Italian Monday, Japanese Tuesday, Mexican Wednesday, etc.).
-    - Use the offset parameter to get different results from previous searches.
-    - NEVER assign the same recipeId to more than one meal slot in a week.
-    - For efficiency: search for each meal type (breakfast, lunch, dinner) 2-3 times with different queries requesting number=10 results, then pick unique recipes from the combined results.
+14. VARIETY: populate_meal_plan handles deduplication automatically — it will never assign the same recipe twice. For single-meal swaps via update_meal, the server will warn if a recipe already exists in another slot but will still allow the write. By default, suggest a different recipe to avoid duplicates. But if the user explicitly wants the same meal in multiple slots, honor their request.
 15. LONG-TERM MEMORY. You have access to a persistent memory system that remembers the user across sessions:
     - Call store_memory whenever the user reveals a taste pattern, cooking habit, texture preference, cuisine opinion, or meal feedback. Be proactive — if they say "this salmon was amazing", store it.
     - Call recall_memories BEFORE searching for recipes. Use the context (e.g. "breakfast", "comfort food", "quick dinners") to retrieve relevant taste intelligence. Incorporate the results into your recipe search queries and selections.
     - Call get_taste_profile when generating a full weekly plan to get the holistic view of the user's food personality. Use static traits as hard constraints and dynamic traits as soft preferences.
     - Memory complements structured preferences (Convex). Preferences are explicit settings (allergies, diet, macros). Memories are nuanced observations (loves umami, prefers al dente pasta, enjoys Sunday batch cooking).
     - When memories conflict with structured preferences, preferences win (they represent explicit user choices).
-    - Do NOT store information that already exists in structured preferences (allergies, dietary restrictions, macro targets). Those belong in update_preferences.`;
+    - Do NOT store information that already exists in structured preferences (allergies, dietary restrictions, macro targets). Those belong in update_preferences.
+16. PREFERENCE PROPAGATION: When a user changes a lasting preference (e.g. "I'm going vegetarian"), after updating preferences, get the current plan, collect recipeIds from meals where isManualOverride is true into excludeRecipeIds, then call populate_meal_plan with the updated dietary constraints. This re-generates non-manual meals while preserving manual overrides.`;
 
 export async function handleUserMessage(
   authToken: string,
@@ -100,38 +96,36 @@ export async function handleUserMessage(
       };
     }
 
-    // Step 4: Tool calls found — execute each one
-    const toolResults: ChatCompletionToolMessageParam[] = [];
-
-    for (const toolCall of message.tool_calls) {
-      if (toolCall.type !== "function") continue;
-      const handler = toolHandlers[toolCall.function.name];
-
-      if (!handler) {
-        toolResults.push({
-          role: "tool" as const,
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` }),
-        });
-        continue;
-      }
-
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        const result = await handler(args);
-        toolResults.push({
-          role: "tool" as const,
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result),
-        });
-      } catch (error: any) {
-        toolResults.push({
-          role: "tool" as const,
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({ error: error.message }),
-        });
-      }
-    }
+    // Step 4: Tool calls found — execute all in parallel
+    const toolResults: ChatCompletionToolMessageParam[] = await Promise.all(
+      message.tool_calls
+        .filter((tc) => tc.type === "function")
+        .map(async (toolCall) => {
+          const handler = toolHandlers[toolCall.function.name];
+          if (!handler) {
+            return {
+              role: "tool" as const,
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` }),
+            };
+          }
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            const result = await handler(args);
+            return {
+              role: "tool" as const,
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result),
+            };
+          } catch (error: any) {
+            return {
+              role: "tool" as const,
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: error.message }),
+            };
+          }
+        })
+    );
 
     // Step 5: Feed tool results back to LLM and loop
     conversationHistory.push(...toolResults);

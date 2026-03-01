@@ -203,6 +203,51 @@ export const toolDefinitions: ChatCompletionTool[] = [
   },
 
   // ═══════════════════════════════════════════
+  // BULK PLAN POPULATION
+  // ═══════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "populate_meal_plan",
+      description:
+        "Populates an entire weekly meal plan in one call. Searches Spoonacular for recipes matching dietary constraints, deduplicates server-side, writes all meals in a single batch, and auto-generates the grocery list. Use this for initial plan generation and preference propagation. Do NOT use search_recipes + update_meal individually for full plan population — that is slow and error-prone. For single-meal swaps, continue using search_recipes + update_meal.",
+      parameters: {
+        type: "object",
+        properties: {
+          mealPlanId: { type: "string", description: "The Convex ID of the meal plan." },
+          days: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            },
+            description: "Days to populate. e.g. ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].",
+          },
+          mealSlots: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["breakfast", "lunch", "dinner", "snack"],
+            },
+            description: "Meal types to fill. e.g. ['breakfast','lunch','dinner'].",
+          },
+          diet: { type: "string", description: "e.g. 'vegetarian', 'keto', 'paleo'." },
+          intolerances: { type: "string", description: "Comma-separated. e.g. 'peanut,shellfish'." },
+          cuisine: { type: "string", description: "Comma-separated preferred cuisines. e.g. 'mediterranean,japanese'." },
+          excludeIngredients: { type: "string", description: "Comma-separated. e.g. 'cilantro,olives'." },
+          maxCalories: { type: "number", description: "Max calories per serving." },
+          excludeRecipeIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Recipe IDs to exclude (e.g. manually overridden meals to preserve). These will not be assigned to any slot.",
+          },
+        },
+        required: ["mealPlanId", "days", "mealSlots"],
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════
   // RECIPE DISCOVERY TOOLS
   // ═══════════════════════════════════════════
   {

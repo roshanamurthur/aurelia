@@ -99,7 +99,27 @@ export function createToolHandlers(authToken: string) {
         ingredients = undefined;
       }
 
-      return await convex.mutation(api.mealPlans.upsertMeal, {
+      // Soft dedup check: warn about duplicates but still allow the write
+      let duplicateWarning: string | undefined;
+      if (!args.isTakeout && args.recipeId && !/^takeout-/.test(args.recipeId)) {
+        try {
+          const existingMeals = await convex.query(api.mealPlans.getMealsByPlanId, {
+            mealPlanId: args.mealPlanId,
+          });
+          const duplicate = existingMeals.find(
+            (m: any) =>
+              m.recipeId === args.recipeId &&
+              !(m.day === args.day && m.mealType === args.mealType)
+          );
+          if (duplicate) {
+            duplicateWarning = `Note: this recipe is also assigned to ${duplicate.day} ${duplicate.mealType}.`;
+          }
+        } catch {
+          // Non-fatal: proceed without dedup check
+        }
+      }
+
+      const result = await convex.mutation(api.mealPlans.upsertMeal, {
         mealPlanId: args.mealPlanId,
         day: args.day,
         mealType: args.mealType,
@@ -117,6 +137,161 @@ export function createToolHandlers(authToken: string) {
         takeoutService: args.takeoutService,
         takeoutDetails: args.takeoutDetails,
       });
+      if (duplicateWarning) {
+        return { ...result, duplicateWarning };
+      }
+      return result;
+    },
+
+    populate_meal_plan: async (args: any) => {
+      const { mealPlanId, days, mealSlots, excludeRecipeIds = [] } = args;
+
+      // Build Spoonacular base params from dietary constraints
+      const baseParams: Record<string, string> = {
+        addRecipeInformation: "true",
+        addRecipeNutrition: "true",
+        sort: "popularity",
+        apiKey: process.env.SPOONACULAR_API_KEY!,
+      };
+      if (args.diet) baseParams.diet = args.diet;
+      if (args.intolerances) baseParams.intolerances = args.intolerances;
+      if (args.cuisine) baseParams.cuisine = args.cuisine;
+      if (args.excludeIngredients) baseParams.excludeIngredients = args.excludeIngredients;
+      if (args.maxCalories) baseParams.maxCalories = String(args.maxCalories);
+
+      // Map meal slots to Spoonacular types
+      const spoonacularType: Record<string, string> = {
+        breakfast: "breakfast",
+        lunch: "main course",
+        dinner: "main course",
+        snack: "snack",
+      };
+
+      // Search Spoonacular: 2 calls per meal type (offset 0 and 15), all in parallel
+      const uniqueSlots = [...new Set(mealSlots as string[])];
+      const searchPromises = uniqueSlots.flatMap((slot) => {
+        const type = spoonacularType[slot] || "main course";
+        return [0, 15].map(async (offset) => {
+          const params = new URLSearchParams({
+            ...baseParams,
+            type,
+            number: "15",
+            offset: String(offset),
+          });
+          try {
+            const res = await fetch(
+              `https://api.spoonacular.com/recipes/complexSearch?${params}`
+            );
+            if (!res.ok) return [];
+            const data = await res.json();
+            return (data.results || []).map((r: any) => ({
+              id: String(r.id),
+              title: r.title,
+              image: r.image,
+              sourceUrl: r.sourceUrl,
+              calories: r.nutrition?.nutrients?.find((n: any) => n.name === "Calories")?.amount,
+              protein: r.nutrition?.nutrients?.find((n: any) => n.name === "Protein")?.amount,
+              carbs: r.nutrition?.nutrients?.find((n: any) => n.name === "Carbohydrates")?.amount,
+              fat: r.nutrition?.nutrients?.find((n: any) => n.name === "Fat")?.amount,
+              ingredients: r.nutrition?.ingredients?.map((i: any) => ({
+                name: i.name,
+                amount: i.amount,
+                unit: i.unit,
+              })) || [],
+              mealType: slot,
+            }));
+          } catch {
+            return [];
+          }
+        });
+      });
+
+      const searchResults = await Promise.all(searchPromises);
+
+      // Group recipes by meal type, deduplicate
+      const excludeSet = new Set(excludeRecipeIds as string[]);
+      const usedIds = new Set<string>();
+      const recipesByType: Record<string, any[]> = {};
+
+      for (const slot of uniqueSlots) {
+        recipesByType[slot] = [];
+      }
+
+      for (const batch of searchResults) {
+        for (const recipe of batch) {
+          if (excludeSet.has(recipe.id) || usedIds.has(recipe.id)) continue;
+          if (recipesByType[recipe.mealType]) {
+            recipesByType[recipe.mealType].push(recipe);
+            usedIds.add(recipe.id);
+          }
+        }
+      }
+
+      // Assign recipes to slots
+      const meals: any[] = [];
+      const typeIndex: Record<string, number> = {};
+      for (const slot of uniqueSlots) {
+        typeIndex[slot] = 0;
+      }
+
+      for (const day of days as string[]) {
+        for (const slot of mealSlots as string[]) {
+          const pool = recipesByType[slot] || [];
+          const idx = typeIndex[slot] || 0;
+          if (idx >= pool.length) continue; // No more unique recipes available
+
+          const recipe = pool[idx];
+          typeIndex[slot] = idx + 1;
+
+          meals.push({
+            day,
+            mealType: slot,
+            recipeId: recipe.id,
+            recipeName: recipe.title,
+            recipeImageUrl: recipe.image,
+            sourceUrl: recipe.sourceUrl,
+            calories: recipe.calories,
+            protein: recipe.protein,
+            carbs: recipe.carbs,
+            fat: recipe.fat,
+            ingredients: recipe.ingredients,
+          });
+        }
+      }
+
+      // Batch write all meals
+      const totalSlots = (days as string[]).length * (mealSlots as string[]).length;
+      let batchResult = null;
+      if (meals.length > 0) {
+        batchResult = await convex.mutation(api.mealPlans.batchUpsertMeals, {
+          mealPlanId,
+          meals,
+        });
+
+        // Auto-generate grocery list
+        try {
+          await convex.mutation(api.groceryList.generate, { mealPlanId });
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      return {
+        success: true,
+        mealsAssigned: meals.length,
+        totalSlots,
+        meals: meals.map((m) => ({
+          day: m.day,
+          mealType: m.mealType,
+          recipeName: m.recipeName,
+          recipeId: m.recipeId,
+          calories: m.calories,
+        })),
+        ...(meals.length < totalSlots && {
+          note: `Only ${meals.length} of ${totalSlots} slots filled. Spoonacular returned limited results for the given constraints. You can use search_recipes + update_meal to fill remaining slots manually.`,
+        }),
+        groceryListGenerated: meals.length > 0,
+      };
     },
 
     remove_meal: async (args: any) => {
@@ -158,7 +333,7 @@ export function createToolHandlers(authToken: string) {
         ...(args.mealType && { type: args.mealType }),
         number: String(args.number || 5),
         offset: String(args.offset || 0),
-        sort: "random",
+        sort: "popularity",
         addRecipeInformation: "true",
         addRecipeNutrition: "true",
         apiKey: process.env.SPOONACULAR_API_KEY!,
