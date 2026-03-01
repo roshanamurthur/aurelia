@@ -96,6 +96,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "get_active_plan",
+      description:
+        "Returns the user's currently active meal plan with all meals, or null if none exists. Use this FIRST before any meal modification — it gives you the mealPlanId needed for update_meal, remove_meal, etc. No date arithmetic required. This is the primary way to look up the current plan.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_meal_plan",
       description:
         "Creates a new empty weekly meal plan for a given week. If a plan already exists for that week, returns the existing plan ID. Archives any previous active plans. IMPORTANT: After calling this, you MUST call populate_meal_plan with the returned mealPlanId to fill the meal slots. NEVER use search_recipes + update_meal to fill a full plan.",

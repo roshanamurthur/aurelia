@@ -209,6 +209,29 @@ export const upsertMeal = mutation({
   },
 });
 
+// Dedicated meals-only subscription for the active plan.
+// Separate from getActivePlan so meal changes trigger an independent,
+// granular re-evaluation — belt-and-suspenders for real-time UI updates.
+export const watchActiveMeals = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const plan = await ctx.db
+      .query("mealPlans")
+      .withIndex("by_userId_status", (q) =>
+        q.eq("userId", userId).eq("status", "active")
+      )
+      .order("desc")
+      .first();
+    if (!plan) return null;
+    return await ctx.db
+      .query("plannedMeals")
+      .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", plan._id))
+      .collect();
+  },
+});
+
 export const getMealsByPlanId = query({
   args: {
     mealPlanId: v.id("mealPlans"),

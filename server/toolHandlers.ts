@@ -61,6 +61,30 @@ export function createToolHandlers(authToken: string) {
     // CONVEX HANDLERS — Plan Layer
     // ═══════════════════════════════════════════
 
+    get_active_plan: async () => {
+      const plan = await convex.query(api.mealPlans.getActivePlan, {});
+      if (!plan) return { plan: null, message: "No active meal plan. Create one with create_meal_plan." };
+      // Normalize: expose mealPlanId (not raw _id) for consistency with all other tools
+      return {
+        mealPlanId: plan._id,
+        weekStartDate: plan.weekStartDate,
+        status: plan.status,
+        meals: plan.meals?.map((m: any) => ({
+          day: m.day,
+          mealType: m.mealType,
+          recipeId: m.recipeId,
+          recipeName: m.recipeName,
+          calories: m.calories,
+          protein: m.protein,
+          carbs: m.carbs,
+          fat: m.fat,
+          isTakeout: m.isTakeout,
+          isManualOverride: m.isManualOverride,
+          isSkipped: m.isSkipped,
+        })),
+      };
+    },
+
     create_meal_plan: async (args: any) => {
       const result = await convex.mutation(api.mealPlans.create, {
         weekStartDate: args.weekStartDate,
@@ -72,9 +96,13 @@ export function createToolHandlers(authToken: string) {
     },
 
     get_meal_plan: async (args: any) => {
-      return await convex.query(api.mealPlans.getWithMeals, {
+      const plan = await convex.query(api.mealPlans.getWithMeals, {
         weekStartDate: args.weekStartDate,
       });
+      if (!plan) return null;
+      // Normalize: expose mealPlanId (not raw _id) so LLM can pass it to update_meal etc.
+      const { _id, _creationTime, ...rest } = plan;
+      return { mealPlanId: _id, ...rest };
     },
 
     update_meal: async (args: any) => {

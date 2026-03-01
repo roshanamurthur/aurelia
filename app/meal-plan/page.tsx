@@ -8,7 +8,7 @@ import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
 import { getDefaultTimeForRestaurant, SF_RESTAURANTS } from "@/lib/sfRestaurants";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 
 type ExpandedRecipe = { day: string; mealType: string } | null;
@@ -16,8 +16,25 @@ type FridgeItem = { id: string; label: string };
 
 export default function MealPlanPage() {
   const { isLoading } = useConvexAuth();
-  const activePlan = useQuery(api.mealPlans.getActivePlan);
+  const rawActivePlan = useQuery(api.mealPlans.getActivePlan);
+  // Dedicated meals subscription — independent reactive channel for meal changes
+  const liveMeals = useQuery(api.mealPlans.watchActiveMeals);
   const currentUser = useQuery(api.preferences.currentUser);
+
+  // Keep stable plan data during brief WebSocket re-subscriptions
+  // (prevents "No meal plan" flash when connection hiccups)
+  const stablePlanRef = useRef(rawActivePlan);
+  if (rawActivePlan !== undefined) {
+    stablePlanRef.current = rawActivePlan;
+  }
+  const activePlan = rawActivePlan !== undefined ? rawActivePlan : stablePlanRef.current;
+
+  // Prefer dedicated meals subscription (more granular reactivity),
+  // fall back to activePlan.meals while liveMeals is still loading
+  const currentMeals: any[] =
+    liveMeals !== undefined
+      ? (liveMeals ?? [])
+      : (activePlan?.meals ?? []);
   const groceryList = useQuery(
     api.groceryList.get,
     activePlan?._id ? { mealPlanId: activePlan._id } : "skip"
@@ -57,7 +74,9 @@ export default function MealPlanPage() {
     setSelectedGroceryIndices(new Set());
   }, [groceryList?.items?.length]);
 
-  if (isLoading) {
+  // Show loading indicator while auth or initial query is loading
+  // (but NOT during WebSocket re-subscriptions — stablePlanRef covers that)
+  if (isLoading || (rawActivePlan === undefined && stablePlanRef.current === undefined)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#fdfbf8] via-[#f9f5f0] to-[#f5efe8]">
         <div className="flex gap-2">
@@ -114,8 +133,8 @@ export default function MealPlanPage() {
   const todayDayName = getDayName(new Date());
 
   const getMeal = (day: string, mealType: string) => {
-    if (!activePlan?.meals) return null;
-    return activePlan.meals.find(
+    if (!currentMeals.length) return null;
+    return currentMeals.find(
       (m: any) => m.day === day && m.mealType === mealType && !m.isSkipped
     );
   };
@@ -177,7 +196,7 @@ export default function MealPlanPage() {
     defaultTime?: string;
   };
   const getTakeoutMealsForSchedule = (): TakeoutSlot[] => {
-    if (!activePlan?.meals) return [];
+    if (!currentMeals.length) return [];
     const items: TakeoutSlot[] = [];
     for (const { date, planDayName } of rollingDays) {
       if (!planDayName) continue;
@@ -1196,7 +1215,7 @@ export default function MealPlanPage() {
                     );
                   })}
                   {/* Nutrition widget - today's calories & macros (ring) */}
-                  {activePlan.meals && activePlan.meals.length > 0 && (() => {
+                  {currentMeals.length > 0 && (() => {
                     const todaySlot = rollingDays[0];
                     const todayPlanDay = todaySlot?.planDayName ?? null;
                     const todaySlotDay = todaySlot?.dayName ?? todayDayName;
