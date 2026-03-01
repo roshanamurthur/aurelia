@@ -552,6 +552,53 @@ export function createToolHandlers(authToken: string) {
     },
 
     // ═══════════════════════════════════════════
+    // TIKTOK & CUSTOM RECIPE HANDLERS
+    // ═══════════════════════════════════════════
+
+    extract_tiktok_recipe: async (args: any) => {
+      try {
+        const res = await fetch(
+          `${process.env.SITE_URL || "http://localhost:3005"}/api/tiktok-extract`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoUrl: args.videoUrl }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          return { success: false, error: data.error || "TikTok extraction failed." };
+        }
+        return data;
+      } catch (error: any) {
+        return { success: false, error: `TikTok extraction request failed: ${error.message}` };
+      }
+    },
+
+    save_custom_recipe: async (args: any) => {
+      const result = await convex.mutation(api.customRecipes.save, {
+        name: args.name,
+        source: args.source,
+        sourceUrl: args.sourceUrl,
+        creator: args.creator,
+        ingredients: args.ingredients,
+        instructions: args.instructions,
+        calories: args.calories,
+        protein: args.protein,
+        carbs: args.carbs,
+        fat: args.fat,
+      });
+      return { ...result, name: args.name };
+    },
+
+    search_custom_recipes: async (args: any) => {
+      const results = await convex.query(api.customRecipes.getByName, {
+        query: args.query,
+      });
+      return { recipes: results, total: results.length };
+    },
+
+    // ═══════════════════════════════════════════
     // INTAKE FLOW
     // ═══════════════════════════════════════════
 

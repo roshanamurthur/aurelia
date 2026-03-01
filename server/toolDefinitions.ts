@@ -497,6 +497,86 @@ export const toolDefinitions: ChatCompletionTool[] = [
   },
 
   // ═══════════════════════════════════════════
+  // TIKTOK & CUSTOM RECIPE TOOLS
+  // ═══════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "extract_tiktok_recipe",
+      description:
+        "Extracts a recipe from a TikTok video. Browser Use reads the caption, on-screen text, and comments to get the dish name, ingredients, instructions, and nutrition. Returns extracted data that should be saved via save_custom_recipe and assigned to a meal slot via update_meal.",
+      parameters: {
+        type: "object",
+        properties: {
+          videoUrl: {
+            type: "string",
+            description: "The TikTok video URL.",
+          },
+        },
+        required: ["videoUrl"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_custom_recipe",
+      description:
+        "Saves a custom recipe to the user's personal recipe collection. These are reusable — the user can reference them by name in future meal plans. Call this after extracting a recipe from TikTok or when the user describes a personal recipe.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Dish name." },
+          source: {
+            type: "string",
+            enum: ["tiktok", "instagram", "youtube", "manual"],
+            description: "Where the recipe came from.",
+          },
+          sourceUrl: { type: "string", description: "Original URL (TikTok link, etc.)." },
+          creator: { type: "string", description: "@handle of the recipe creator." },
+          ingredients: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                amount: { type: "number" },
+                unit: { type: "string" },
+              },
+              required: ["name", "amount", "unit"],
+            },
+            description: "Ingredient list with amounts and units.",
+          },
+          instructions: { type: "string", description: "Step-by-step cooking instructions." },
+          calories: { type: "number", description: "Calories per serving." },
+          protein: { type: "number", description: "Protein in grams." },
+          carbs: { type: "number", description: "Carbs in grams." },
+          fat: { type: "number", description: "Fat in grams." },
+        },
+        required: ["name", "source"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_custom_recipes",
+      description:
+        "Searches the user's saved custom recipes by name. Use when the user references a previously saved recipe (e.g., 'that buffalo chicken wrap from TikTok'). Returns matching recipes with full ingredient/nutrition data.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search term to match against recipe names.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════
   // INTAKE FLOW TOOLS
   // ═══════════════════════════════════════════
   {
