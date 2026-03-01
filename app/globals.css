@@ -66,10 +66,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-nunito), var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* Consistent heading font */
+/* Headings - elegant serif */
 .font-display {
   font-family: var(--font-playfair), Georgia, serif;
 }

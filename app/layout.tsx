@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import type { Metadata } from "next";
+import { Geist, Geist_Mono, Nunito, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -20,6 +20,12 @@ const playfair = Playfair_Display({
   display: "swap",
 });
 
+const nunito = Nunito({
+  variable: "--font-nunito",
+  subsets: ["latin"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Aurelia",
   description: "Weekly meal plan",
@@ -34,7 +40,7 @@ export default function RootLayout({
     <ConvexAuthNextjsServerProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
+          className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${nunito.variable} antialiased`}
         >
           <Providers>{children}</Providers>
         </body>

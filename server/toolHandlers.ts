@@ -7,16 +7,17 @@
 // 3. ORDERING HANDLERS — log to Convex + trigger Browser Use agent (future)
 
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api";
 import Supermemory from "supermemory";
+import { api } from "../convex/_generated/api";
 
 export function createToolHandlers(authToken: string) {
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
   convex.setAuth(authToken);
 
-  const supermemory = new Supermemory({
-    apiKey: process.env.SUPERMEMORY_API_KEY,
-  });
+  const supermemory =
+    process.env.SUPERMEMORY_API_KEY
+      ? new Supermemory({ apiKey: process.env.SUPERMEMORY_API_KEY })
+      : null;
 
   // Cache userId for the session to avoid repeated queries
   let cachedUserId: string | null = null;
@@ -229,6 +230,9 @@ export function createToolHandlers(authToken: string) {
     // ═══════════════════════════════════════════
 
     store_memory: async (args: any) => {
+      if (!supermemory) {
+        return { id: null, status: "skipped", message: "Memory storage unavailable." };
+      }
       const userId = await getUserId();
       const result = await supermemory.add({
         content: args.content,
@@ -246,6 +250,9 @@ export function createToolHandlers(authToken: string) {
     },
 
     recall_memories: async (args: any) => {
+      if (!supermemory) {
+        return { memories: [], total: 0, timing: {} };
+      }
       const userId = await getUserId();
       const result = await supermemory.search.memories({
         q: args.query,
@@ -253,7 +260,7 @@ export function createToolHandlers(authToken: string) {
         limit: args.limit || 10,
       });
       return {
-        memories: result.results.map((r) => ({
+        memories: result.results.map((r: any) => ({
           id: r.id,
           content: r.memory || r.chunk || "",
           similarity: r.similarity,
@@ -266,6 +273,9 @@ export function createToolHandlers(authToken: string) {
     },
 
     get_taste_profile: async (args: any) => {
+      if (!supermemory) {
+        return { staticTraits: [], dynamicTraits: [] };
+      }
       const userId = await getUserId();
       const result = await supermemory.profile({
         containerTag: containerTag(userId),

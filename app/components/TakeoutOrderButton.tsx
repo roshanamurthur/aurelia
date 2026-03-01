@@ -84,27 +84,27 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
           <button
             type="button"
             onClick={proposeTakeout}
-            className="px-3 py-1.5 rounded-lg bg-amber-500/90 hover:bg-amber-600 text-white text-xs font-medium transition-all active:scale-[0.97] shadow-sm"
+            className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
           >
             Order Takeout
           </button>
         )}
         {status === "proposing" && proposedItem && (
           <div className="text-center px-2 space-y-2">
-            <p className="text-[10px] text-stone-500 dark:text-stone-400">We&apos;ll order:</p>
-            <p className="text-xs font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{proposedItem}</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400">We&apos;ll order:</p>
+            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{proposedItem}</p>
             <div className="flex gap-2 justify-center">
               <button
                 type="button"
                 onClick={confirmAndOrder}
-                className="px-2.5 py-1 rounded-lg bg-green-500/90 hover:bg-green-600 text-white text-xs font-medium transition-all active:scale-[0.97]"
+                className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
               >
                 Approve
               </button>
               <button
                 type="button"
                 onClick={disapproveAndRegenerate}
-                className="px-2.5 py-1 rounded-lg bg-stone-300 dark:bg-stone-600 hover:bg-stone-400 dark:hover:bg-stone-500 text-stone-800 dark:text-stone-200 text-xs font-medium transition-all active:scale-[0.97]"
+                className="px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
               >
                 Different item
               </button>
@@ -114,14 +114,14 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
         {status === "ordering" && (
           <div className="text-center px-2">
             <div className="flex gap-1 justify-center mb-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-rust-600 animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">{proposedItem}</p>
-            <p className="text-[10px] text-stone-400 mt-0.5">Ordering via DoorDash...</p>
+            <p className="text-sm text-stone-800 dark:text-stone-200 font-medium">{proposedItem}</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Ordering via DoorDash...</p>
             {liveUrl && (
-              <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline mt-0.5 block">
+              <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5 block">
                 Watch live
               </a>
             )}
@@ -129,18 +129,18 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
         )}
         {status === "success" && (
           <div className="text-center px-2">
-            <p className="text-xs text-green-600 dark:text-green-400 font-medium">Added to cart</p>
-            <p className="text-[10px] text-stone-500 mt-0.5 line-clamp-2">{proposedItem}</p>
-            <button type="button" onClick={proposeTakeout} className="text-[10px] text-blue-500 hover:underline mt-1">
+            <p className="text-sm text-rust-600 dark:text-rust-400 font-medium">Added to cart</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{proposedItem}</p>
+            <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
               Order another
             </button>
           </div>
         )}
         {status === "error" && (
           <div className="text-center px-2">
-            <p className="text-xs text-red-500 font-medium">Failed</p>
-            <p className="text-[10px] text-stone-400 mt-0.5 line-clamp-2">{error}</p>
-            <button type="button" onClick={proposeTakeout} className="text-[10px] text-blue-500 hover:underline mt-1">
+            <p className="text-sm text-stone-700 dark:text-stone-300 font-medium">Failed</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{error}</p>
+            <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
               Try again
             </button>
           </div>
@@ -156,7 +156,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
         <button
           type="button"
           onClick={proposeTakeout}
-          className="px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/90 hover:bg-amber-600 text-white transition-all active:scale-[0.97] shadow-sm flex items-center gap-2"
+          className="px-4 py-2 rounded-xl text-sm font-medium bg-rust-500/90 hover:bg-rust-600 text-white transition-all active:scale-[0.97] shadow-sm flex items-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3" />
@@ -168,22 +168,22 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
       )}
       {status === "proposing" && proposedItem && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
-          <span className="text-sm text-stone-600 dark:text-stone-300">Order:</span>
+          <span className="text-sm text-stone-600 dark:text-stone-400">Order:</span>
           <span className="text-sm font-medium text-stone-800 dark:text-stone-200 max-w-[180px] truncate" title={proposedItem}>
             {proposedItem}
           </span>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={confirmAndOrder}
-              className="px-2.5 py-1 rounded-lg bg-green-500/90 hover:bg-green-600 text-white text-xs font-medium"
+              className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
             >
               Approve
             </button>
             <button
               type="button"
               onClick={disapproveAndRegenerate}
-              className="px-2.5 py-1 rounded-lg bg-stone-200 dark:bg-stone-600 hover:bg-stone-300 dark:hover:bg-stone-500 text-stone-700 dark:text-stone-300 text-xs font-medium"
+              className="px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
             >
               Different
             </button>
@@ -191,32 +191,32 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
         </div>
       )}
       {status === "ordering" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-rust-50/80 dark:bg-rust-950/20 border border-rust-200/60 dark:border-rust-800/40">
           <div className="flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-rust-600 animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
-          <span className="text-sm text-amber-700 dark:text-amber-300 font-medium">{proposedItem}</span>
+          <span className="text-sm text-stone-800 dark:text-stone-200 font-medium">{proposedItem}</span>
           {liveUrl && (
-            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline ml-1">
+            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline ml-1">
               Watch
             </a>
           )}
         </div>
       )}
       {status === "success" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200/60 dark:border-green-800/40">
-          <span className="text-sm text-green-600 dark:text-green-400 font-medium">{proposedItem} added to cart</span>
-          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-500 hover:underline">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-rust-50/80 dark:bg-rust-950/20 border border-rust-200/60 dark:border-rust-800/40">
+          <span className="text-sm text-rust-600 dark:text-rust-400 font-medium">{proposedItem} added to cart</span>
+          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
             Again
           </button>
         </div>
       )}
       {status === "error" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/40">
-          <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
-          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-500 hover:underline">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
+          <span className="text-sm text-stone-700 dark:text-stone-300">{error}</span>
+          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
             Try again
           </button>
         </div>

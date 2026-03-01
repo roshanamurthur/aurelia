@@ -1,14 +1,15 @@
 "use client";
 
-import SignOutButton from "@/app/components/SignOutButton";
 import Chat from "@/app/components/Chat";
+import SignOutButton from "@/app/components/SignOutButton";
 import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "../convex/_generated/api";
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../convex/_generated/api";
 
 const LANDING_COPY =
-  "Hi, I'm Aurelia. Together we'll build your weekly plan so you never have to think before you eat.";
+  "Hi, I'm Aurelia. Let's plan your week.";
 const LANDING_PLACEHOLDER =
   "Calorie goals per meal, things you enjoy, allergies, cuisines you love...";
 
@@ -200,10 +201,10 @@ export default function Home() {
               <Typewriter text={LANDING_COPY} />
             </h1>
             <p className="text-base text-stone-500 dark:text-stone-400 mb-8">
-              Tell us what you like. We&apos;ll handle the rest.
+              Tell us what you like to eat. We&apos;ll handle the rest.
             </p>
             <form onSubmit={handleLandingSubmit} className="w-full max-w-lg mb-4">
-              <div className="flex gap-2 rounded-full bg-white/80 dark:bg-stone-900/50 backdrop-blur-md py-2 pl-6 pr-2 shadow-[0_4px_24px_rgba(0,0,0,0.06)] transition-all duration-300 focus-within:bg-white/95 dark:focus-within:bg-stone-900/70">
+              <div className="flex gap-2 rounded-full bg-white/90 dark:bg-stone-900/60 backdrop-blur-md py-2 pl-6 pr-2 border border-stone-200/60 dark:border-stone-700/50 transition-all duration-300 focus-within:bg-white dark:focus-within:bg-stone-900/70 focus-within:border-rust-300 dark:focus-within:border-rust-700">
                 <input
                   ref={inputRef}
                   type="text"
@@ -216,12 +217,22 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={!text.trim()}
-                  className="px-6 py-3 rounded-full bg-rust-500/90 hover:bg-rust-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-base transition-all active:scale-[0.98] shrink-0 shadow-sm shadow-rust-500/20"
+                  className="px-6 py-3 rounded-full bg-rust-500 hover:bg-rust-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-base transition-all active:scale-[0.98] shrink-0"
                 >
                   Go
                 </button>
               </div>
             </form>
+            <Link
+              href="/meal-plan"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-stone-600 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800/80 transition-colors"
+            >
+              <span>View my meal plan</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </Link>
             <div className="mt-6 flex gap-4 justify-center">
               {isAuthenticated && (
                 <SignOutButton className="text-sm text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 bg-transparent border-none cursor-pointer font-normal">
@@ -246,7 +257,7 @@ export default function Home() {
                   <span className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 text-sm">&rarr;</span>
                   My plan
                 </a>
-                <SignOutButton className="flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm text-stone-500 hover:text-stone-700 hover:bg-stone-100/80 dark:text-stone-400 dark:hover:text-stone-300 dark:hover:bg-stone-800/80 transition-all border border-transparent">
+                <SignOutButton className="flex items-center gap-3 px-4 py-3 rounded-full text-left text-sm font-semibold text-stone-500 hover:text-stone-700 hover:bg-stone-100/80 dark:text-stone-400 dark:hover:text-stone-300 dark:hover:bg-stone-800/80 transition-all border border-transparent">
                   <span className="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-stone-400 dark:text-stone-500 text-xs">&larr;</span>
                   Sign out
                 </SignOutButton>
@@ -271,7 +282,7 @@ export default function Home() {
                 Preferences
               </button>
               <div className="flex items-center gap-3">
-                <a href="/meal-plan" className="px-4 py-2 rounded-xl text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-950/50 transition-colors">My plan</a>
+                <a href="/meal-plan" className="px-4 py-2 rounded-full text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-950/50 transition-colors">My plan</a>
               </div>
             </header>
 
