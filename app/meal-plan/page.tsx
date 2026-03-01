@@ -2,7 +2,6 @@
 
 import Chat from "@/app/components/Chat";
 import DineOutReservationButton from "@/app/components/DineOutReservationButton";
-import SignOutButton from "@/app/components/SignOutButton";
 import TakeoutOrderButton from "@/app/components/TakeoutOrderButton";
 import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
 import { getDefaultTimeForRestaurant } from "@/lib/sfRestaurants";
@@ -78,11 +77,11 @@ export default function MealPlanPage() {
   // (but NOT during WebSocket re-subscriptions — stablePlanRef covers that)
   if (isLoading || (rawActivePlan === undefined && stablePlanRef.current === undefined)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#fdfbf8] via-[#f9f5f0] to-[#f5efe8]">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex gap-2">
-          <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+          <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
         </div>
       </div>
     );
@@ -884,28 +883,21 @@ export default function MealPlanPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-[#fdfbf8] via-[#f9f5f0] to-[#f5efe8] dark:from-stone-950 dark:via-stone-900 dark:to-stone-950">
+    <div className="flex h-screen overflow-hidden bg-white">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="sticky top-0 z-10 bg-white/80 dark:bg-stone-900/80 backdrop-blur-md border-b border-stone-200/60 dark:border-stone-800 shrink-0">
+        <header className="sticky top-0 z-10 bg-white border-b border-black shrink-0">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/" className="flex items-center gap-2">
-                <img src="/icon.svg" alt="Aurelia" className="w-8 h-8" />
-                <span className="font-display text-xl font-semibold text-stone-800 dark:text-stone-100">Aurelia</span>
+              <Link href="/" className="flex items-center">
+                <img src="/aurelia-logo.png" alt="Aurelia" className="w-8 h-8 object-contain" />
               </Link>
             </div>
             <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="px-4 py-2 rounded-xl text-sm font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 dark:text-stone-400 dark:hover:text-stone-200 dark:hover:bg-stone-800 transition-colors"
-              >
+              <Link href="/" className="px-4 py-2 border border-black text-black text-sm font-medium hover:bg-black hover:text-white transition-colors">
                 Home
               </Link>
-              <SignOutButton className="px-4 py-2 rounded-xl text-sm font-medium text-stone-500 hover:text-stone-700 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800 transition-colors">
-                Sign out
-              </SignOutButton>
             </div>
           </div>
         </header>
@@ -914,15 +906,15 @@ export default function MealPlanPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
             {!activePlan ? (
               <div className="text-center py-20">
-                <h2 className="font-display text-2xl font-semibold text-stone-800 dark:text-stone-100 mb-4">
+                <h2 className="font-display text-2xl font-semibold text-black mb-4">
                   No meal plan yet
                 </h2>
-                <p className="text-stone-500 dark:text-stone-400 mb-8 max-w-md mx-auto">
+                <p className="text-black/70 mb-8 max-w-md mx-auto">
                   Head back to the chat and tell Aurelia about your dietary preferences. She&apos;ll generate a personalized meal plan for you.
                 </p>
                 <Link
                   href="/"
-                  className="inline-flex px-6 py-3 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white font-medium transition-colors shadow-sm"
+                  className="inline-flex px-6 py-3 border border-black text-black font-medium hover:bg-black hover:text-white transition-colors"
                 >
                   Start planning
                 </Link>
@@ -930,7 +922,7 @@ export default function MealPlanPage() {
             ) : (
               <>
                 <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <h1 className="font-display text-3xl font-semibold text-stone-800 dark:text-stone-100">
+                  <h1 className="font-display text-3xl font-semibold text-black">
                     {(() => {
                       const hour = new Date().getHours();
                       const greeting =
@@ -944,14 +936,14 @@ export default function MealPlanPage() {
                       type="button"
                       onClick={handleScheduleAll}
                       disabled={takeoutSlotsForSchedule.length === 0 || (scheduleProgress?.ordering ?? 0) > 0}
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2.5 text-sm font-medium border border-black text-black hover:bg-black hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {scheduleProgress && scheduleProgress.ordering > 0 ? (
                         <span className="inline-flex items-center gap-2">
                           <span className="flex gap-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
                           </span>
                           Ordering {scheduleProgress.done + scheduleProgress.ordering} of {scheduleProgress.total}…
                         </span>
@@ -962,8 +954,8 @@ export default function MealPlanPage() {
                   </div>
                 </div>
 
-                {/* Day cards + nutrition widget */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
+                {/* Day cards — sharp grid, no gaps between cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 border border-black divide-x divide-y divide-black">
                   {rollingDays.map(({ date, label, dayName, planDayName }) => {
                     const dateStr = date.toISOString().slice(0, 10);
                     const dayCalories = getDayCalories(planDayName, dayName, dateStr);
@@ -971,14 +963,14 @@ export default function MealPlanPage() {
                     return (
                       <div
                         key={dayKey}
-                        className="rounded-xl border border-stone-200/60 dark:border-stone-700/50 bg-white/80 dark:bg-stone-800/60 p-4 shadow-sm min-h-[280px] flex flex-col"
+                        className="p-4 min-h-[280px] flex flex-col bg-white"
                       >
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-semibold text-stone-800 dark:text-stone-200">
+                          <h3 className="font-semibold text-black">
                             {label}
                           </h3>
                           {dayCalories > 0 && (
-                            <span className="text-sm font-medium text-rust-600 dark:text-rust-400">
+                            <span className="text-sm font-medium text-black">
                               {Math.round(dayCalories)} cal
                             </span>
                           )}
@@ -988,8 +980,8 @@ export default function MealPlanPage() {
                             const meal = planDayName ? getMeal(planDayName, mealType) : null;
                             const isExpanded = expandedRecipe?.day === dayName && expandedRecipe?.mealType === mealType;
                             return (
-                              <div key={`${dayName}-${mealType}`} className="border-b border-stone-100 dark:border-stone-700/40 last:border-0 pt-2.5 pb-2.5 last:pb-0 min-h-[56px] flex flex-col">
-                                <p className="text-xs font-medium text-stone-500 dark:text-stone-400 capitalize mb-1 shrink-0">
+                              <div key={`${dayName}-${mealType}`} className="border-b border-black last:border-0 pt-2.5 pb-2.5 last:pb-0 min-h-[56px] flex flex-col">
+                                <p className="text-xs font-medium text-black/70 capitalize mb-1 shrink-0">
                                   {mealType}
                                 </p>
                                 {meal ? (
@@ -1069,7 +1061,7 @@ export default function MealPlanPage() {
                                             const nextExpanded = isExpanded ? null : { day: dayName, mealType };
                                             setExpandedRecipe(nextExpanded);
                                           }}
-                                          className="text-left w-full text-sm font-medium text-stone-800 dark:text-stone-200 hover:text-rust-600 dark:hover:text-rust-400 transition-colors"
+                                          className="text-left w-full text-sm font-medium text-black hover:underline transition-colors"
                                         >
                                           {meal.recipeName}
                                         </button>
@@ -1093,7 +1085,7 @@ export default function MealPlanPage() {
                                                     }
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="block text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline truncate"
+                                                    className="block text-xs font-medium text-black hover:underline truncate"
                                                   >
                                                     {meal.sourceUrl?.includes("tiktok.com") ? "View TikTok →" : "View recipe →"}
                                                   </a>
@@ -1108,21 +1100,21 @@ export default function MealPlanPage() {
                                                   {meal.ingredients.map((ing: { name: string }, i: number) => ing.name).join(", ")}
                                                 </p>
                                               ) : (
-                                                <p className="text-xs text-stone-500 dark:text-stone-400 italic">
+                                                <p className="text-xs text-black/70 italic">
                                                   Ingredients not available.
                                                 </p>
                                               )}
                                             </div>
                                             {/* Nutrition summary */}
                                             {(meal.calories != null || meal.protein != null || meal.carbs != null || meal.fat != null) && (
-                                              <div className="pt-2 border-t border-stone-100 dark:border-stone-700/40">
+                                              <div className="pt-2 border-t border-black">
                                                 <p className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide mb-1">Nutrition</p>
                                                 <p className="text-xs text-stone-600 dark:text-stone-300">
                                                   {Math.round(meal.calories || 0)} cal
                                                   {(meal.protein != null || meal.carbs != null || meal.fat != null) && (
                                                     <span className="text-stone-400 dark:text-stone-500 mx-1.5">·</span>
                                                   )}
-                                                  {meal.protein != null && <span className="text-blue-600 dark:text-blue-400">P {Math.round(meal.protein)}g</span>}
+                                                  {meal.protein != null && <span className="text-rust-500">P {Math.round(meal.protein)}g</span>}
                                                   {meal.protein != null && (meal.carbs != null || meal.fat != null) && <span className="text-stone-400 dark:text-stone-500 mx-1">·</span>}
                                                   {meal.carbs != null && <span className="text-rust-600 dark:text-rust-400">C {Math.round(meal.carbs)}g</span>}
                                                   {meal.carbs != null && meal.fat != null && <span className="text-stone-400 dark:text-stone-500 mx-1">·</span>}
@@ -1134,7 +1126,7 @@ export default function MealPlanPage() {
                                         )}
                                       </>
                                     ) : (
-                                      <p className="text-sm font-medium text-stone-800 dark:text-stone-200">
+                                      <p className="text-sm font-medium text-black">
                                         {meal.recipeName}
                                       </p>
                                     )}
@@ -1204,27 +1196,27 @@ export default function MealPlanPage() {
                     const p1 = pctP * 100;
                     const p2 = (pctP + pctC) * 100;
                     return (
-                      <div className="rounded-2xl border border-stone-200/60 dark:border-stone-700/50 bg-white/90 dark:bg-stone-800/60 p-4 flex flex-col items-center justify-center gap-3 min-h-[280px]">
+                      <div className="bg-white p-4 flex flex-col items-center justify-center gap-3 min-h-[280px]">
                         <div
-                          className="relative w-32 h-32 rounded-full shrink-0"
+                          className="relative w-32 h-32 shrink-0"
                           style={{
-                            background: `conic-gradient(from -90deg, #4a7a9a 0% ${p1}%, #c87050 ${p1}% ${p2}%, #a8a29e ${p2}% 100%)`,
+                            background: `conic-gradient(from -90deg, #c87050 0% ${p1}%, #333 ${p1}% ${p2}%, #666 ${p2}% 100%)`,
                           }}
                         >
-                          <div className="absolute inset-[24%] rounded-full bg-[#fdfbf8] dark:bg-stone-800/90" />
-                          <div className="absolute inset-[24%] flex flex-col items-center justify-center rounded-full pointer-events-none">
-                            <span className="text-lg font-bold text-stone-800 dark:text-stone-100 leading-none">{Math.round(todayCal)}</span>
-                            <span className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">cal today</span>
+                          <div className="absolute inset-[24%] rounded-full bg-white border border-black" />
+                          <div className="absolute inset-[24%] flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-lg font-bold text-black leading-none">{Math.round(todayCal)}</span>
+                            <span className="text-xs text-black/70 mt-0.5">cal today</span>
                           </div>
                         </div>
-                        <div className="text-sm text-stone-600 dark:text-stone-400 text-center leading-tight">
-                          <span className="text-blue-600 dark:text-blue-400">P {Math.round(todayProtein)}g</span>
-                          <span className="mx-1.5 text-stone-300 dark:text-stone-600">·</span>
-                          <span className="text-rust-600 dark:text-rust-400">C {Math.round(todayCarbs)}g</span>
-                          <span className="mx-1.5 text-stone-300 dark:text-stone-600">·</span>
-                          <span className="text-stone-600 dark:text-stone-400">F {Math.round(todayFat)}g</span>
+                        <div className="text-sm text-black text-center leading-tight">
+                          <span className="text-rust-500">P {Math.round(todayProtein)}g</span>
+                          <span className="mx-1.5 text-black/50">·</span>
+                          <span>C {Math.round(todayCarbs)}g</span>
+                          <span className="mx-1.5 text-black/50">·</span>
+                          <span>F {Math.round(todayFat)}g</span>
                         </div>
-                        <p className="text-xs text-stone-500 dark:text-stone-400 text-center">
+                        <p className="text-xs text-black/70 text-center">
                           {todayMeals.length} meal{todayMeals.length !== 1 ? "s" : ""} today
                         </p>
                       </div>
@@ -1238,15 +1230,15 @@ export default function MealPlanPage() {
       </div>
 
       {/* Fridge sidebar - collapsible */}
-      <aside className={`hidden md:flex shrink-0 flex-col border-l border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 transition-[width] duration-200 ease-out ${fridgeOpen ? "w-64 lg:w-72" : "w-12"}`}>
+      <aside className={`hidden md:flex shrink-0 flex-col border-l border-black bg-white dark:bg-stone-900 transition-[width] duration-200 ease-out ${fridgeOpen ? "w-64 lg:w-72" : "w-12"}`}>
         {fridgeOpen ? (
           <div className="flex flex-1 flex-col overflow-hidden min-w-0 min-h-0">
-            <div className="shrink-0 px-4 py-2 flex items-center justify-between border-b border-stone-200 dark:border-stone-700">
-              <h2 className="font-display text-base font-semibold text-stone-800 dark:text-stone-200">My Fridge</h2>
+            <div className="shrink-0 px-4 py-2 flex items-center justify-between border-b border-black">
+              <h2 className="font-display text-base font-semibold text-black">My Fridge</h2>
               <button
                 type="button"
                 onClick={() => setFridgeOpen(false)}
-                className="w-8 h-8 rounded-full text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center justify-center transition-colors"
+                className="w-8 h-8 border border-black text-black hover:bg-black hover:text-white flex items-center justify-center transition-colors"
                 aria-label="Collapse sidebar"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1256,30 +1248,21 @@ export default function MealPlanPage() {
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
               {/* Fridge section */}
-              <div className="shrink-0 px-4 py-3 border-b border-stone-200 dark:border-stone-700">
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={fridgeInput}
-                    onChange={(e) => setFridgeInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addFridgeItems()}
-                    placeholder="Add ingredients..."
-                    className="flex-1 min-w-0 px-3 py-2 rounded-full text-sm bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-600 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-rust-500/30"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => addFridgeItems(getGroceryCanonicalKey)}
-                    className="px-4 py-2 rounded-full bg-rust-500 hover:bg-rust-600 text-white text-sm font-semibold shrink-0 transition-colors"
-                  >
-                    Add
-                  </button>
-                </div>
-                <div className="relative rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 min-h-[140px] p-3">
-                  <div className="flex flex-wrap gap-2 content-start">
+              <div className="shrink-0 px-4 py-3 border-b border-black">
+                <input
+                  type="text"
+                  value={fridgeInput}
+                  onChange={(e) => setFridgeInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addFridgeItems(getGroceryCanonicalKey)}
+                  placeholder="Add ingredients (press Enter)"
+                  className="w-full px-3 py-2 text-sm bg-transparent border-b border-black text-black placeholder:text-black/50 focus:outline-none mb-2"
+                />
+                <div className="relative min-h-[100px] py-2 bg-white">
+                  <div className="flex flex-wrap gap-1.5 content-start">
                     {getDedupedFridgeDisplay().map(({ groupKey, displayLabel, ids }) => (
                       <div
                         key={groupKey}
-                        className="group relative flex flex-col items-center gap-1 px-2 py-2 rounded-xl bg-white dark:bg-stone-700/80 border border-stone-200 dark:border-stone-600 hover:border-rust-300 dark:hover:border-rust-700 transition-colors"
+                        className="group relative flex flex-col items-center gap-0.5 px-2 py-1.5 bg-white hover:ring-1 hover:ring-black/30 transition-colors"
                       >
                         <div className="relative w-10 h-10 shrink-0">
                           <img
@@ -1292,19 +1275,19 @@ export default function MealPlanPage() {
                             }}
                           />
                           <span
-                            className="hidden absolute inset-0 w-10 h-10 rounded-lg flex items-center justify-center text-[22px] leading-none font-semibold text-stone-600 dark:text-stone-400"
+                            className="hidden absolute inset-0 w-10 h-10 flex items-center justify-center text-[22px] leading-none font-semibold text-black"
                             aria-hidden
                           >
                             {getIngredientFallback(displayLabel)}
                           </span>
                         </div>
-                        <span className="text-[10px] font-medium text-stone-600 dark:text-stone-400 max-w-[70px] truncate text-center">
+                        <span className="text-[10px] font-medium text-black max-w-[70px] truncate text-center">
                           {displayLabel}
                         </span>
                         <button
                           type="button"
                           onClick={() => ids.forEach((id) => removeFridgeItem(id))}
-                          className="absolute -top-0.5 -right-0.5 opacity-0 group-hover:opacity-100 w-4 h-4 rounded-full bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold flex items-center justify-center transition-opacity"
+                          className="absolute -top-0.5 -right-0.5 opacity-0 group-hover:opacity-100 w-4 h-4 bg-black hover:bg-white hover:text-black text-white text-[10px] font-bold flex items-center justify-center transition-opacity"
                           aria-label={`Remove ${displayLabel}`}
                         >
                           ×
@@ -1312,7 +1295,7 @@ export default function MealPlanPage() {
                       </div>
                     ))}
                     {fridgeItems.length === 0 && (
-                      <p className="absolute inset-0 flex items-center justify-center text-sm text-stone-400 dark:text-stone-500 text-center px-4">
+                      <p className="absolute inset-0 flex items-center justify-center text-sm text-black/50 text-center px-4">
                         Add ingredients above
                       </p>
                     )}
@@ -1320,10 +1303,10 @@ export default function MealPlanPage() {
                 </div>
               </div>
 
-              {/* Grocery list section - same style as fridge */}
+              {/* Grocery list section */}
               <div className="flex-1 min-h-0 px-4 py-3 flex flex-col">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-display text-base font-semibold text-stone-800 dark:text-stone-200">Grocery list</h3>
+                  <h3 className="font-display text-base font-semibold text-black">Grocery list</h3>
                   {activePlan?._id && groceryList?.items && groceryList.items.length > 0 && (
                     <button
                       type="button"
@@ -1337,7 +1320,7 @@ export default function MealPlanPage() {
                         }
                       }}
                       disabled={groceryGenerating}
-                      className="text-[10px] font-semibold text-rust-600 dark:text-rust-400 hover:underline disabled:opacity-60"
+                      className="text-[10px] font-semibold text-black hover:underline disabled:opacity-60"
                     >
                       {groceryGenerating ? "Updating…" : "Regenerate"}
                     </button>
@@ -1345,8 +1328,8 @@ export default function MealPlanPage() {
                 </div>
                 {activePlan?._id && (
                   (groceryList?.items && groceryList.items.length > 0) ? (
-                    <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 overflow-y-auto">
-                      <div className="grid grid-cols-3 gap-2">
+                    <div className="relative flex-1 min-h-[120px] py-2 overflow-y-auto bg-white">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {getDedupedGroceryItems().map((item: { name: string; amount?: number; unit?: string }, i: number) => {
                               const canonicalKey = getGroceryCanonicalKey(item.name);
                               const displayName =
@@ -1355,10 +1338,10 @@ export default function MealPlanPage() {
                               return (
                           <div
                             key={`${item.name}-${i}`}
-                            className={`flex flex-col items-center gap-1 p-2 rounded-xl border min-w-0 cursor-pointer transition-colors ${
+                            className={`flex flex-col items-center gap-0.5 p-1.5 min-w-0 cursor-pointer transition-colors bg-white ${
                               isSelected
-                                ? "bg-rust-50/80 dark:bg-rust-950/30 border-rust-200 dark:border-rust-800"
-                                : "bg-white dark:bg-stone-700/80 border-stone-200 dark:border-stone-600"
+                                ? "ring-1 ring-black"
+                                : "hover:ring-1 hover:ring-black/30"
                             }`}
                             onClick={() => {
                               setSelectedGroceryIndices((prev) => {
@@ -1371,25 +1354,25 @@ export default function MealPlanPage() {
                           >
                             <div className="relative w-full aspect-square max-w-12 shrink-0">
                               {isSelected && (
-                                <span className="absolute top-0 right-0 z-10 w-4 h-4 rounded-full bg-rust-500 flex items-center justify-center text-white text-[10px]">✓</span>
+                                <span className="absolute top-0 right-0 z-10 w-3.5 h-3.5 bg-black flex items-center justify-center text-white text-[9px]">✓</span>
                               )}
                               <img
                                 src={getIngredientImageUrl(displayName)}
                                 alt=""
-                                className="w-full h-full rounded-lg object-cover"
+                                className="w-full h-full object-cover"
                                 onError={(e) => {
                                   e.currentTarget.style.display = "none";
                                   e.currentTarget.nextElementSibling?.classList.remove("hidden");
                                 }}
                               />
                               <span
-                                className="hidden absolute inset-0 w-full h-full rounded-lg flex items-center justify-center text-[22px] leading-none font-semibold text-stone-600 dark:text-stone-400"
+                                className="hidden absolute inset-0 w-full h-full flex items-center justify-center text-[22px] leading-none font-semibold text-black"
                                 aria-hidden
                               >
                                 {getIngredientFallback(displayName)}
                               </span>
                             </div>
-                            <span className="text-[10px] font-medium text-stone-600 dark:text-stone-400 w-full truncate text-center">
+                            <span className="text-[10px] font-medium text-black w-full truncate text-center">
                               {displayName}
                             </span>
                           </div>
@@ -1402,14 +1385,14 @@ export default function MealPlanPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedGroceryIndices(new Set(getDedupedGroceryItems().map((_, i) => i)))}
-                              className="text-rust-600 dark:text-rust-400 hover:underline"
+                              className="text-black hover:underline"
                             >
                               Select all
                             </button>
                             <button
                               type="button"
                               onClick={() => setSelectedGroceryIndices(new Set())}
-                              className="text-stone-500 dark:text-stone-400 hover:underline"
+                              className="text-black/70 hover:underline"
                             >
                               Clear
                             </button>
@@ -1451,24 +1434,24 @@ export default function MealPlanPage() {
                               }
                             }}
                             disabled={instacartOrdering || selectedGroceryIndices.size === 0}
-                            className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-60 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+                            className="w-full py-2 border border-black bg-black hover:bg-white hover:text-black disabled:opacity-60 text-white text-sm font-medium transition-all active:scale-[0.97]"
                           >
                             {instacartOrdering
                               ? "Adding to Instacart…"
                               : `Order ${selectedGroceryIndices.size} item${selectedGroceryIndices.size !== 1 ? "s" : ""} on Instacart`}
                           </button>
                           {instacartResult && (
-                            <p className="text-xs text-rust-600 dark:text-rust-400">{instacartResult}</p>
+                            <p className="text-xs text-black">{instacartResult}</p>
                           )}
                           {instacartError && (
-                            <p className="text-xs text-stone-600 dark:text-stone-400">{instacartError}</p>
+                            <p className="text-xs text-black">{instacartError}</p>
                           )}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 flex flex-col items-center justify-center">
-                      <p className="text-sm text-stone-500 dark:text-stone-400 text-center mb-3">
+                    <div className="relative flex-1 min-h-[120px] py-4 flex flex-col items-center justify-center">
+                      <p className="text-sm text-black/70 text-center mb-3">
                         Add items from your recipes
                       </p>
                       <button
@@ -1483,7 +1466,7 @@ export default function MealPlanPage() {
                           }
                         }}
                         disabled={groceryGenerating}
-                        className="px-4 py-2 rounded-full bg-rust-500 hover:bg-rust-600 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+                        className="px-4 py-2 border border-black bg-black hover:bg-white hover:text-black disabled:opacity-60 text-white text-sm font-semibold transition-colors"
                       >
                         {groceryGenerating ? "Generating…" : "Add items to grocery list"}
                       </button>
@@ -1491,8 +1474,8 @@ export default function MealPlanPage() {
                   )
                 )}
                 {!activePlan?._id && (
-                  <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 flex items-center justify-center">
-                    <p className="text-sm text-stone-500 dark:text-stone-400 text-center">
+                  <div className="relative flex-1 min-h-[80px] py-4 flex items-center justify-center">
+                    <p className="text-sm text-black/70 text-center">
                       Create a meal plan first
                     </p>
                   </div>
@@ -1504,45 +1487,62 @@ export default function MealPlanPage() {
           <button
             type="button"
             onClick={() => setFridgeOpen(true)}
-            className="flex h-full w-full items-center justify-center bg-white dark:bg-stone-900 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
+            className="flex h-full w-full items-center justify-center bg-white hover:bg-black/5 transition-colors"
             aria-label="Expand fridge"
             title="Show fridge"
           >
-            <span className="text-[11px] font-semibold text-stone-500 dark:text-stone-400 [writing-mode:vertical-rl] rotate-180">
+            <span className="text-[11px] font-semibold text-black [writing-mode:vertical-rl] rotate-180">
               Fridge
             </span>
           </button>
         )}
       </aside>
 
-      {/* Chat panel — desktop sidebar */}
-      {chatOpen && (
-        <aside className="hidden md:flex w-96 shrink-0 flex-col border-l border-stone-200/60 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md">
-          <div className="shrink-0 px-4 py-3 flex items-center justify-between border-b border-stone-200/60 dark:border-stone-800">
-            <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-200">Chat with Aurelia</h2>
-            <button
-              type="button"
-              onClick={() => setChatOpen(false)}
-              className="w-8 h-8 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center justify-center transition-colors"
-            >
-              &times;
-            </button>
+      {/* Chat panel — desktop collapsible sidebar (like fridge) */}
+      <aside className={`hidden md:flex shrink-0 flex-col border-l border-black bg-white transition-[width] duration-200 ease-out ${chatOpen ? "w-96" : "w-12"}`}>
+        {chatOpen ? (
+          <div className="flex flex-1 flex-col overflow-hidden min-w-0 min-h-0">
+            <div className="shrink-0 px-4 py-3 flex items-center justify-between border-b border-black">
+              <img src="/aurelia-logo.png" alt="" className="w-6 h-6 object-contain" />
+              <button
+                type="button"
+                onClick={() => setChatOpen(false)}
+                className="w-8 h-8 border border-black text-black hover:bg-black hover:text-white flex items-center justify-center transition-colors"
+                aria-label="Collapse chat"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <Chat variant="panel" placeholder="Swap Thursday dinner to pasta..." />
+            </div>
           </div>
-          <div className="flex-1 min-h-0">
-            <Chat variant="panel" placeholder="Swap Thursday dinner to pasta..." />
-          </div>
-        </aside>
-      )}
+        ) : (
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            className="flex h-full w-full items-center justify-center bg-white hover:bg-black/5 transition-colors"
+            aria-label="Expand chat"
+            title="Chat"
+          >
+            <span className="text-[11px] font-semibold text-black [writing-mode:vertical-rl] rotate-180">
+              Chat
+            </span>
+          </button>
+        )}
+      </aside>
 
       {/* Chat panel — mobile full-width overlay */}
       {chatOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md flex flex-col">
-          <div className="shrink-0 px-4 py-3 flex items-center justify-between border-b border-stone-200/60 dark:border-stone-800">
-            <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-200">Chat with Aurelia</h2>
+        <div className="md:hidden fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="shrink-0 px-4 py-3 flex items-center justify-between border-b border-black">
+            <img src="/aurelia-logo.png" alt="" className="w-6 h-6 object-contain" />
             <button
               type="button"
               onClick={() => setChatOpen(false)}
-              className="w-8 h-8 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center justify-center transition-colors"
+              className="w-8 h-8 border border-black text-black hover:bg-black hover:text-white flex items-center justify-center transition-colors"
             >
               &times;
             </button>
@@ -1568,17 +1568,17 @@ export default function MealPlanPage() {
         </div>
       )}
 
-      {/* Floating toggle button */}
+      {/* Floating toggle button — mobile only (desktop has collapsible sidebar) */}
       {!chatOpen && (
         <button
           type="button"
           onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-6 z-40 px-5 py-3 rounded-full bg-rust-500 hover:bg-rust-600 text-white font-semibold text-sm transition-all active:scale-[0.97] flex items-center gap-2"
+          className="md:hidden fixed bottom-6 right-6 z-40 px-4 py-2.5 border border-black bg-black hover:bg-white hover:text-black text-white font-semibold text-sm transition-all active:scale-[0.97] flex items-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          Chat with Aurelia
+          Chat
         </button>
       )}
     </div>

@@ -105,12 +105,12 @@ const Chat = forwardRef<ChatHandle, ChatProps>(function Chat(
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl leading-relaxed ${
+              className={`max-w-[85%] leading-relaxed ${
                 isPanel ? "px-3.5 py-2.5" : "px-5 py-4"
               } ${
                 msg.role === "user"
-                  ? `bg-rust-500/95 text-white shadow-lg shadow-rust-500/15 font-medium ${isPanel ? "text-sm" : "text-[17px]"}`
-                  : `bg-white/95 dark:bg-stone-800/95 text-stone-800 dark:text-stone-200 shadow-sm border border-stone-200/60 dark:border-stone-700/50 ${isPanel ? "text-sm" : "text-[18px]"}`
+                  ? `bg-black text-white font-medium border border-black ${isPanel ? "text-sm" : "text-[17px]"}`
+                  : `bg-white text-black border border-black ${isPanel ? "text-sm" : "text-[18px]"}`
               }`}
             >
               {msg.content}
@@ -119,12 +119,12 @@ const Chat = forwardRef<ChatHandle, ChatProps>(function Chat(
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className={`rounded-2xl bg-white/95 dark:bg-stone-800/95 shadow-sm border border-stone-200/60 dark:border-stone-700/50 ${isPanel ? "px-3.5 py-2.5" : "px-5 py-4"}`}>
-              <span className="flex gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
-              </span>
+            <div className={`bg-white border border-black ${isPanel ? "px-4 py-3" : "px-5 py-4"}`}>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-2 h-2 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
             </div>
           </div>
         )}
@@ -132,23 +132,23 @@ const Chat = forwardRef<ChatHandle, ChatProps>(function Chat(
       </div>
 
       {error && (
-        <p className={`text-sm text-red-600 dark:text-red-400 mb-2 ${isPanel ? "px-4" : "px-1"}`}>{error}</p>
+        <p className={`text-sm text-black mb-2 ${isPanel ? "px-4" : "px-1"}`}>{error}</p>
       )}
 
       <form onSubmit={handleSubmit} className={`shrink-0 ${isPanel ? "px-4 pb-4 pt-2" : "pt-4 pb-6"}`}>
-        <div className={`flex ${isPanel ? "gap-2" : "gap-3"} rounded-2xl bg-white/95 dark:bg-stone-900/80 backdrop-blur-md ${isPanel ? "py-2 pl-4 pr-2" : "py-3 pl-6 pr-3"} shadow-[0_4px_24px_rgba(0,0,0,0.06)] focus-within:shadow-[0_4px_28px_rgba(0,0,0,0.08)] transition-shadow duration-200 border border-stone-200/60 dark:border-stone-700/50`}>
+        <div className={`flex ${isPanel ? "gap-2" : "gap-3"} bg-white border border-black ${isPanel ? "py-2 pl-4 pr-2" : "py-3 pl-6 pr-3"}`}>
           <input
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={placeholder || "Tell me about your dietary preferences, or ask me to plan your meals..."}
             disabled={loading}
-            className={`flex-1 bg-transparent px-2 py-2 text-stone-800 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 ${isPanel ? "text-sm" : "text-base"} focus:outline-none disabled:opacity-60 min-w-0`}
+            className={`flex-1 bg-transparent px-2 py-2 text-black placeholder:text-black/50 ${isPanel ? "text-sm" : "text-base"} focus:outline-none disabled:opacity-60 min-w-0`}
           />
           <button
             type="submit"
             disabled={!text.trim() || loading}
-            className={`rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-all active:scale-[0.98] shrink-0 shadow-sm shadow-rust-500/20 ${isPanel ? "px-4 py-2 text-sm" : "px-5 py-2.5 text-base"}`}
+            className={`border border-black bg-black hover:bg-white hover:text-black disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-all active:scale-[0.98] shrink-0 ${isPanel ? "px-4 py-2 text-sm" : "px-5 py-2.5 text-base"}`}
           >
             Send
           </button>

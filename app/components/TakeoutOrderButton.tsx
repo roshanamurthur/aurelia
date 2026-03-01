@@ -148,27 +148,27 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
     }
   };
 
-  // Small DoorDash indicator — dot is red (idle), orange (ordering), green (success)
-  const DoorDashBadge = ({ onDark = false, dotStatus }: { onDark?: boolean; dotStatus?: "idle" | "ordering" | "success" }) => {
-    const dotColor =
-      dotStatus === "ordering"
-        ? "bg-amber-500"
-        : dotStatus === "success"
-          ? "bg-emerald-500"
-          : "bg-[#FF3008]";
+  const DoorDashIcon = ({ onDark = false, status }: { onDark?: boolean; status?: "idle" | "ordering" | "success" }) => {
+    const color =
+      status === "ordering"
+        ? "text-black"
+        : status === "success"
+          ? "text-black"
+          : onDark
+            ? "text-white"
+            : "text-black";
     return (
-      <span
-        className={`inline-flex items-center gap-0.5 text-xs font-medium ${onDark ? "text-white/80" : "text-stone-400 dark:text-stone-500"}`}
-        title="Orders via DoorDash"
-      >
-        <span className={`w-1 h-1 rounded-full ${dotColor}`} aria-hidden />
-        DoorDash
+      <span className={`inline-flex items-center ${color}`} title="Orders via DoorDash">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3" />
+          <path d="M21 12H7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1Z" />
+          <path d="M10 16h6" />
+        </svg>
       </span>
     );
   };
 
-  // Shared card style — matches recipe cards: stone border, same padding
-  const cardBase = "w-full text-left py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-600 bg-white dark:bg-stone-800/80";
+  const cardBase = "w-full text-left py-2 px-3 border-l-4 border-l-rust-500 bg-white";
 
   // When scheduleStatus is set (from Schedule All), show that state inline — takes precedence over internal status
   const effectiveStatus = scheduleStatus
@@ -186,22 +186,22 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
       <div className="w-full shrink-0">
         {effectiveStatus === "idle" && (
           displayMeal ? (
-            <div className={`${cardBase} hover:border-rust-300 dark:hover:border-rust-700 transition-colors`}>
-              <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2 leading-tight">{displayMeal}</p>
+            <div className={`${cardBase} hover:bg-black/5 transition-colors`}>
+              <p className="text-sm font-medium text-black line-clamp-2 leading-tight">{displayMeal}</p>
               <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                 <button
                   type="button"
                   onClick={handleOrder}
-                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:text-rust-700 dark:hover:text-rust-300 hover:underline"
+                  className="text-xs font-medium text-black hover:underline"
                 >
                   Order
                 </button>
-                <DoorDashBadge />
-                <span className="text-stone-300 dark:text-stone-600">·</span>
+                <DoorDashIcon />
+                <span className="text-black/50">·</span>
                 <button
                   type="button"
                   onClick={handleDifferent}
-                  className="text-xs font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:underline"
+                  className="text-xs font-medium text-black/70 hover:text-black hover:underline"
                 >
                   Different item
                 </button>
@@ -211,27 +211,27 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
             <button
               type="button"
               onClick={openApproveFlow}
-              className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5"
+              className="w-full py-2 border border-black bg-black hover:bg-white hover:text-black text-white text-sm font-medium transition-all active:scale-[0.97] flex items-center justify-center gap-1.5"
             >
               Order Takeout
-              <DoorDashBadge onDark />
+              <DoorDashIcon onDark />
             </button>
           )
         )}
         {effectiveStatus === "ordering" && (
           <div className={cardBase}>
             <div className="flex items-center gap-2">
-              <DoorDashBadge dotStatus="ordering" />
+              <DoorDashIcon status="ordering" />
               <div className="flex gap-0.5 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+                <p className="text-sm font-medium text-black truncate">
                   {scheduleStatus ? displayMeal : proposedItem}
                 </p>
-                <p className="text-xs text-stone-500 dark:text-stone-400">
+                <p className="text-xs text-black/70">
                   {scheduleStatus?.progressMessage ?? (scheduleStatus ? "Ordering…" : progressMessage)}
                 </p>
               </div>
@@ -240,7 +240,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
                   href={scheduleStatus?.liveUrl ?? liveUrl ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline shrink-0"
+                  className="text-xs font-medium text-black hover:underline shrink-0"
                 >
                   Watch
                 </a>
@@ -250,15 +250,15 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         )}
         {effectiveStatus === "success" && (
           <div className={cardBase}>
-            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+            <p className="text-sm font-medium text-black truncate">
               {scheduleStatus ? displayMeal : proposedItem}
             </p>
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              <DoorDashBadge dotStatus="success" />
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <DoorDashIcon status="success" />
+              <span className="text-xs font-medium text-black">
                 Added to cart
                 {scheduleStatus?.scheduledFor && (
-                  <span className="text-rust-600 dark:text-rust-400 ml-1">· ~{scheduleStatus.scheduledFor}</span>
+                  <span className="text-black/70 ml-1">· ~{scheduleStatus.scheduledFor}</span>
                 )}
               </span>
               {(scheduleStatus?.liveUrl || (!scheduleStatus && liveUrl)) && (
@@ -266,13 +266,13 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
                   href={scheduleStatus?.liveUrl ?? liveUrl ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline"
+                  className="text-xs font-medium text-black hover:underline"
                 >
                   Watch
                 </a>
               )}
               {!scheduleStatus && (
-                <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
+                <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-black hover:underline">
                   Order another
                 </button>
               )}
@@ -281,17 +281,17 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         )}
         {effectiveStatus === "error" && (
           <div className={cardBase}>
-            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+            <p className="text-sm font-medium text-black truncate">
               {scheduleStatus ? displayMeal : proposedItem}
             </p>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">
+            <p className="text-xs text-black/70 mt-0.5 line-clamp-2">
               {scheduleStatus?.error ?? error}
             </p>
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               <button
                 type="button"
                 onClick={scheduleStatus ? (onClearScheduleError ?? openApproveFlow) : openApproveFlow}
-                className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline"
+                className="text-xs font-medium text-black hover:underline"
               >
                 Retry
               </button>
@@ -309,7 +309,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         <button
           type="button"
           onClick={openApproveFlow}
-          className="px-4 py-2 rounded-xl text-sm font-medium bg-rust-500/90 hover:bg-rust-600 text-white transition-all active:scale-[0.97] shadow-sm flex items-center gap-2"
+          className="px-4 py-2 border border-black text-sm font-medium bg-black hover:bg-white hover:text-black text-white transition-all active:scale-[0.97] flex items-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3" />
@@ -320,23 +320,23 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         </button>
       )}
       {status === "proposing" && displayMeal && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
-          <span className="text-sm text-stone-600 dark:text-stone-400">Order:</span>
-          <span className="text-sm font-medium text-stone-800 dark:text-stone-200 max-w-[180px] truncate" title={displayMeal}>
+        <div className="flex items-center gap-3 px-4 py-2 border border-black bg-white">
+          <span className="text-sm text-black/70">Order:</span>
+          <span className="text-sm font-medium text-black max-w-[180px] truncate" title={displayMeal}>
             {displayMeal}
           </span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleOrder}
-              className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+              className="px-3 py-2 border border-black bg-black hover:bg-white hover:text-black text-white text-sm font-medium transition-all active:scale-[0.97]"
             >
               Order
             </button>
             <button
               type="button"
               onClick={handleDifferent}
-              className="px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
+              className="px-3 py-2 border border-black bg-white hover:bg-black hover:text-white text-black text-sm font-medium transition-all active:scale-[0.97]"
             >
               Different
             </button>
@@ -344,35 +344,35 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         </div>
       )}
       {status === "ordering" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
+        <div className="flex items-center gap-3 px-4 py-2 border border-black bg-white">
           <div className="flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-rust-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="w-1.5 h-1.5 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
           <div>
-            <p className="text-sm font-medium text-stone-800 dark:text-stone-200">{proposedItem}</p>
-            <p className="text-xs text-stone-500 dark:text-stone-400">{progressMessage}</p>
+            <p className="text-sm font-medium text-black">{proposedItem}</p>
+            <p className="text-xs text-black/70">{progressMessage}</p>
           </div>
           {liveUrl && (
-            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline ml-1">
+            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-black hover:underline ml-1">
               Watch
             </a>
           )}
         </div>
       )}
       {status === "success" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
-          <span className="text-sm font-medium text-stone-800 dark:text-stone-200">{proposedItem} added to cart</span>
-          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
+        <div className="flex items-center gap-3 px-4 py-2 border border-black bg-white">
+          <span className="text-sm font-medium text-black">{proposedItem} added to cart</span>
+          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-black hover:underline">
             Again
           </button>
         </div>
       )}
       {status === "error" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
-          <span className="text-sm text-stone-700 dark:text-stone-300">{error}</span>
-          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
+        <div className="flex items-center gap-3 px-4 py-2 border border-black bg-white">
+          <span className="text-sm text-black">{error}</span>
+          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-black hover:underline">
             Try again
           </button>
         </div>

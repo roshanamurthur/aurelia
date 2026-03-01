@@ -29,9 +29,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-dm-sans), var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-playfair);
+  --font-display: var(--font-syne), system-ui, sans-serif;
   --color-rust-50: #fdf6f3;
   --color-rust-100: #f9e8e0;
   --color-rust-200: #f2d4c8;
@@ -69,13 +69,74 @@ body {
   font-family: var(--font-nunito), var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* Headings - elegant serif */
+/* Display - Nunito for headings */
 .font-display {
-  font-family: var(--font-playfair), Georgia, serif;
+  font-family: var(--font-nunito), system-ui, sans-serif;
 }
 
 @keyframes gradient-shift {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
+}
+
+/* Aurora: slow-moving golden glow for Aurelia branding */
+@keyframes aurora-drift {
+  0%, 100% { background-position: 0% 0%; }
+  25% { background-position: 100% 50%; }
+  50% { background-position: 50% 100%; }
+  75% { background-position: 0% 50%; }
+}
+
+@keyframes aurora-shift {
+  0%, 100% {
+    opacity: 1;
+    transform: translate(0%, 0%) scale(1);
+  }
+  25% {
+    opacity: 0.9;
+    transform: translate(2%, -1%) scale(1.02);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-1%, 2%) scale(0.98);
+  }
+  75% {
+    opacity: 0.95;
+    transform: translate(-2%, -2%) scale(1.01);
+  }
+}
+
+@keyframes aurora-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Glowing shimmer for AI processing indicator */
+@keyframes shimmer-beam {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(200, 112, 80, 0.3), 0 0 24px rgba(200, 112, 80, 0.15); }
+  50% { box-shadow: 0 0 20px rgba(200, 112, 80, 0.5), 0 0 40px rgba(200, 112, 80, 0.25); }
+}
+
+/* Hero food collage — images fade into each other */
+.hero-collage-cell {
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 45%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 45%, transparent 85%);
+}
+
+/* Card entrance: scale + fade */
+@keyframes card-entrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
