@@ -427,14 +427,14 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "initiate_doordash_order",
       description:
-        "Initiates a DoorDash delivery order for a specific planned meal. Call AFTER marking the slot as takeout with update_meal (isTakeout=true, takeoutService='doordash'). Triggers the Browser Use agent to place the order. ALWAYS confirm the meal details and delivery address with the user before calling this.",
+        "Initiates a DoorDash delivery order for a specific planned meal via the Browser Use agent. The full flow is: get_active_plan → update_meal (isTakeout=true, takeoutService='doordash', recipeId='takeout-doordash') → confirm meal name and delivery address with user → initiate_doordash_order. The plannedMealId comes from get_active_plan's meal list. ALWAYS confirm the meal details and delivery address with the user before calling this.",
       parameters: {
         type: "object",
         properties: {
-          mealPlanId: { type: "string", description: "The Convex ID of the meal plan." },
-          plannedMealId: { type: "string", description: "The Convex ID of the specific planned meal." },
-          recipeName: { type: "string", description: "What to search for on DoorDash." },
-          deliveryAddress: { type: "string", description: "Delivery address." },
+          mealPlanId: { type: "string", description: "The Convex ID of the meal plan. Get from get_active_plan." },
+          plannedMealId: { type: "string", description: "The Convex ID of the specific planned meal. Get from get_active_plan's meals[].plannedMealId." },
+          recipeName: { type: "string", description: "What to search for on DoorDash. e.g. 'Chipotle bowl', 'pad thai'." },
+          deliveryAddress: { type: "string", description: "Delivery address. Use deliveryAddress from get_preferences if available." },
         },
         required: ["mealPlanId", "plannedMealId", "recipeName", "deliveryAddress"],
       },
@@ -445,12 +445,12 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "initiate_instacart_order",
       description:
-        "Initiates an Instacart grocery delivery order from the grocery list. ALWAYS confirm with the user before calling this.",
+        "Initiates an Instacart grocery delivery order from the current plan's grocery list via the Browser Use agent. The full flow is: get_active_plan → generate_grocery_list (if not already generated) → confirm with user that you're ordering groceries → initiate_instacart_order. Automatically reads the grocery list items from Convex. ALWAYS confirm with the user before calling this.",
       parameters: {
         type: "object",
         properties: {
-          mealPlanId: { type: "string", description: "The Convex ID of the meal plan." },
-          deliveryAddress: { type: "string", description: "Delivery address." },
+          mealPlanId: { type: "string", description: "The Convex ID of the meal plan. Get from get_active_plan." },
+          deliveryAddress: { type: "string", description: "Delivery address. Use deliveryAddress from get_preferences if available." },
         },
         required: ["mealPlanId", "deliveryAddress"],
       },
@@ -461,18 +461,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "initiate_opentable_reservation",
       description:
-        "Initiates an OpenTable restaurant reservation. ALWAYS confirm details with the user before calling this.",
+        "Initiates an OpenTable restaurant reservation via the Browser Use agent. Call this AFTER updating the meal slot with update_meal (isTakeout=true, takeoutService='opentable', recipeId='dineout-opentable', recipeName=restaurantName). ALWAYS confirm the restaurant name, date, time, and party size with the user before calling. The full flow is: get_active_plan → update_meal (mark slot as dineout) → confirm details with user → initiate_opentable_reservation.",
       parameters: {
         type: "object",
         properties: {
           mealPlanId: { type: "string", description: "The Convex ID of the meal plan." },
-          cuisine: { type: "string", description: "Type of cuisine for the restaurant search." },
-          location: { type: "string", description: "City or area for the restaurant." },
-          date: { type: "string", description: "Reservation date. ISO format." },
-          time: { type: "string", description: "Reservation time. e.g. '19:00'." },
-          partySize: { type: "number", description: "Number of guests." },
+          plannedMealId: { type: "string", description: "The Convex ID of the specific planned meal being reserved. Get this from get_active_plan." },
+          restaurantName: { type: "string", description: "The exact restaurant name to search on OpenTable. Can be from get_sf_restaurants or a user-specified restaurant." },
+          location: { type: "string", description: "City or area for the restaurant. Defaults to 'San Francisco'." },
+          date: { type: "string", description: "Reservation date. ISO format, e.g. '2026-03-06'." },
+          time: { type: "string", description: "Reservation time. e.g. '19:00'. Defaults to '19:00'." },
+          partySize: { type: "number", description: "Number of guests. Defaults to household size from preferences, or 2." },
         },
-        required: ["mealPlanId", "cuisine", "location", "date", "time", "partySize"],
+        required: ["mealPlanId", "restaurantName", "date"],
       },
     },
   },

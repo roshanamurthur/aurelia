@@ -70,6 +70,7 @@ export function createToolHandlers(authToken: string) {
         weekStartDate: plan.weekStartDate,
         status: plan.status,
         meals: plan.meals?.map((m: any) => ({
+          plannedMealId: m._id,
           day: m.day,
           mealType: m.mealType,
           recipeId: m.recipeId,
@@ -79,6 +80,8 @@ export function createToolHandlers(authToken: string) {
           carbs: m.carbs,
           fat: m.fat,
           isTakeout: m.isTakeout,
+          takeoutService: m.takeoutService,
+          takeoutDetails: m.takeoutDetails,
           isManualOverride: m.isManualOverride,
           isSkipped: m.isSkipped,
         })),
@@ -802,16 +805,23 @@ export function createToolHandlers(authToken: string) {
     },
 
     initiate_opentable_reservation: async (args: any) => {
+      const restaurantName = args.restaurantName;
+      const location = args.location || "San Francisco";
+      const date = args.date;
+      const time = args.time || "19:00";
+      const partySize = args.partySize ?? 2;
+
       const { eventId } = await convex.mutation(api.orderEvents.create, {
         mealPlanId: args.mealPlanId,
+        plannedMealId: args.plannedMealId,
         service: "opentable",
         action: "initiated",
         details: JSON.stringify({
-          cuisine: args.cuisine,
-          location: args.location,
-          date: args.date,
-          time: args.time,
-          partySize: args.partySize,
+          restaurantName,
+          location,
+          date,
+          time,
+          partySize,
         }),
       });
 
@@ -822,11 +832,11 @@ export function createToolHandlers(authToken: string) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              restaurantName: args.cuisine,
-              location: args.location || "San Francisco",
-              date: args.date,
-              time: args.time || "19:00",
-              partySize: args.partySize ?? 2,
+              restaurantName,
+              location,
+              date,
+              time,
+              partySize,
             }),
           }
         );
@@ -836,12 +846,13 @@ export function createToolHandlers(authToken: string) {
           return {
             eventId,
             status: "initiated",
-            message: `OpenTable agent failed: ${opentableResult.error || opentableResult.details || opentableRes.statusText}. Log into OpenTable in Chrome and sync your profile.`,
+            message: `OpenTable reservation could not be completed: ${opentableResult.error || opentableResult.details || opentableRes.statusText}. The reservation has been logged and you can retry later.`,
           };
         }
 
         await convex.mutation(api.orderEvents.create, {
           mealPlanId: args.mealPlanId,
+          plannedMealId: args.plannedMealId,
           service: "opentable",
           action: "confirmed",
           details: JSON.stringify(opentableResult),
@@ -850,7 +861,7 @@ export function createToolHandlers(authToken: string) {
         return {
           eventId,
           status: "confirmed",
-          message: `OpenTable reservation confirmed. ${opentableResult.output || ""}`,
+          message: `OpenTable reservation confirmed at ${restaurantName} for ${date} at ${time}, party of ${partySize}. ${opentableResult.output || ""}`,
           result: opentableResult,
         };
       } catch (error: any) {
