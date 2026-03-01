@@ -151,9 +151,11 @@ export const upsertMeal = mutation({
     const plan = await ctx.db.get(args.mealPlanId);
     if (!plan || plan.userId !== userId) throw new Error("Not authorized");
 
-    // When not takeout, clear takeout fields (handles takeout→recipe conversion)
-    const takeoutService = args.isTakeout ? args.takeoutService : undefined;
-    const takeoutDetails = args.isTakeout ? args.takeoutDetails : undefined;
+    // Normalize: default isTakeout to false so patch always writes a real value
+    // (ctx.db.patch strips undefined, which would leave stale isTakeout=true)
+    const isTakeout = args.isTakeout ?? false;
+    const takeoutService = isTakeout ? args.takeoutService : undefined;
+    const takeoutDetails = isTakeout ? args.takeoutDetails : undefined;
 
     // Check if meal already exists for this slot
     const existing = await ctx.db
@@ -175,10 +177,10 @@ export const upsertMeal = mutation({
         protein: args.protein,
         carbs: args.carbs,
         fat: args.fat,
-        ingredients: args.isTakeout ? undefined : args.ingredients,
+        ingredients: isTakeout ? undefined : args.ingredients,
         isManualOverride: args.isManualOverride,
         isSkipped: false,
-        isTakeout: args.isTakeout,
+        isTakeout,
         takeoutService,
         takeoutDetails,
       });
@@ -197,9 +199,9 @@ export const upsertMeal = mutation({
       protein: args.protein,
       carbs: args.carbs,
       fat: args.fat,
-      ingredients: args.isTakeout ? undefined : args.ingredients,
+      ingredients: isTakeout ? undefined : args.ingredients,
       isManualOverride: args.isManualOverride,
-      isTakeout: args.isTakeout,
+      isTakeout,
       takeoutService,
       takeoutDetails,
     });
@@ -288,7 +290,7 @@ export const batchUpsertMeals = mutation({
           ingredients: isTakeout ? undefined : meal.ingredients,
           isManualOverride: false,
           isSkipped: false,
-          isTakeout: isTakeout || undefined,
+          isTakeout,
           takeoutService,
           takeoutDetails,
         });
@@ -309,7 +311,7 @@ export const batchUpsertMeals = mutation({
           fat: meal.fat,
           ingredients: isTakeout ? undefined : meal.ingredients,
           isManualOverride: false,
-          isTakeout: isTakeout || undefined,
+          isTakeout,
           takeoutService,
           takeoutDetails,
         });
