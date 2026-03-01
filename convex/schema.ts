@@ -74,6 +74,31 @@ const schema = defineSchema({
     ),
   }).index("by_mealPlanId", ["mealPlanId"]),
 
+  customRecipes: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    source: v.string(),
+    sourceUrl: v.optional(v.string()),
+    creator: v.optional(v.string()),
+    ingredients: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          amount: v.number(),
+          unit: v.string(),
+        })
+      )
+    ),
+    instructions: v.optional(v.string()),
+    calories: v.optional(v.number()),
+    protein: v.optional(v.number()),
+    carbs: v.optional(v.number()),
+    fat: v.optional(v.number()),
+    imageUrl: v.optional(v.string()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_name", ["userId", "name"]),
+
   orderEvents: defineTable({
     userId: v.id("users"),
     mealPlanId: v.id("mealPlans"),

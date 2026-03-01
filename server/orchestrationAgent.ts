@@ -43,7 +43,17 @@ RULES:
     - Memory complements structured preferences (Convex). Preferences are explicit settings (allergies, diet, macros). Memories are nuanced observations (loves umami, prefers al dente pasta, enjoys Sunday batch cooking).
     - When memories conflict with structured preferences, preferences win (they represent explicit user choices).
     - Do NOT store information that already exists in structured preferences (allergies, dietary restrictions, macro targets). Those belong in update_preferences.
-16. PREFERENCE PROPAGATION: When a user changes a lasting preference (e.g. "I'm going vegetarian"), after updating preferences, get the current plan, collect recipeIds from meals where isManualOverride is true into excludeRecipeIds, then call populate_meal_plan with the updated dietary constraints. This re-generates non-manual meals while preserving manual overrides.`;
+16. PREFERENCE PROPAGATION: When a user changes a lasting preference (e.g. "I'm going vegetarian"), after updating preferences, get the current plan, collect recipeIds from meals where isManualOverride is true into excludeRecipeIds, then call populate_meal_plan with the updated dietary constraints. This re-generates non-manual meals while preserving manual overrides.
+17. TIKTOK & CUSTOM RECIPES: When a user shares a TikTok URL:
+    a) Call extract_tiktok_recipe with the URL.
+    b) If extraction succeeds (dishName is not null), call save_custom_recipe to permanently save it.
+    c) Ask which meal slot to assign it to (unless they specified, e.g. "for dinner tonight").
+    d) Call update_meal with recipeId = "custom-{recipeId from save}", ingredients from extraction, sourceUrl = TikTok URL. Set isManualOverride=true.
+    e) Store a memory about the recipe for taste intelligence.
+    f) If extraction fails (no recipe found), tell the user and ask if they can describe the dish manually.
+    When a user references a previously saved recipe ("that TikTok wrap", "my buffalo chicken recipe"):
+    a) Call search_custom_recipes to find it.
+    b) Use the saved ingredients and nutrition to assign it via update_meal. No need to re-extract from TikTok.`;
 
 export async function handleUserMessage(
   authToken: string,
