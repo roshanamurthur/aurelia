@@ -3,6 +3,27 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Aurelia theme: rusty orange + blue */
+  --rust-50: #fdf6f3;
+  --rust-100: #f9e8e0;
+  --rust-200: #f2d4c8;
+  --rust-300: #e6b8a4;
+  --rust-400: #d49378;
+  --rust-500: #c87050;
+  --rust-600: #b85c3c;
+  --rust-700: #9a4a32;
+  --rust-800: #7d3d2b;
+  --rust-900: #663528;
+  --blue-50: #f0f5fa;
+  --blue-100: #dce8f2;
+  --blue-200: #b8d1e5;
+  --blue-300: #8ab3d4;
+  --blue-400: #5a8fb8;
+  --blue-500: #4a7a9a;
+  --blue-600: #3d6580;
+  --blue-700: #335269;
+  --blue-800: #2d4557;
+  --blue-900: #283a49;
 }
 
 @theme inline {
@@ -10,6 +31,29 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-playfair);
+  --color-rust-50: #fdf6f3;
+  --color-rust-100: #f9e8e0;
+  --color-rust-200: #f2d4c8;
+  --color-rust-300: #e6b8a4;
+  --color-rust-400: #d49378;
+  --color-rust-500: #c87050;
+  --color-rust-600: #b85c3c;
+  --color-rust-700: #9a4a32;
+  --color-rust-800: #7d3d2b;
+  --color-rust-900: #663528;
+  --color-blue-50: #f0f5fa;
+  --color-blue-100: #dce8f2;
+  --color-blue-200: #b8d1e5;
+  --color-blue-300: #8ab3d4;
+  --color-blue-400: #5a8fb8;
+  --color-blue-500: #4a7a9a;
+  --color-blue-600: #3d6580;
+  --color-blue-700: #335269;
+  --color-blue-800: #2d4557;
+  --color-blue-900: #283a49;
+  --color-blue-950: #1a2632;
+  --color-rust-950: #4a2820;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +66,16 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Consistent heading font */
+.font-display {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }

@@ -1,8 +1,8 @@
 "use client";
 
+import type { MealPlanConfig } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { MealPlanConfig } from "@/lib/types";
 
 interface MealPlanControlsProps {
   initialConfig: MealPlanConfig;
@@ -25,42 +25,30 @@ export default function MealPlanControls({ initialConfig, userId }: MealPlanCont
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-4">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider">
-          Days to plan
-        </label>
-        <select
-          value={numDays}
-          onChange={(e) => setNumDays(parseInt(e.target.value, 10))}
-          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500"
-        >
-          {Array.from({ length: 14 }, (_, i) => i + 1).map((d) => (
-            <option key={d} value={d}>
-              {d} {d === 1 ? "day" : "days"}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider">
-          Meals per day
-        </label>
-        <select
-          value={mealsPerDay}
-          onChange={(e) => setMealsPerDay(parseInt(e.target.value, 10))}
-          className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500"
-        >
-          <option value={1}>1 meal</option>
-          <option value={2}>2 meals</option>
-          <option value={3}>3 meals</option>
-        </select>
-      </div>
-
+    <div className="flex flex-wrap items-center gap-3">
+      <select
+        value={numDays}
+        onChange={(e) => setNumDays(parseInt(e.target.value, 10))}
+        className="rounded-lg border border-stone-200 dark:border-stone-600 bg-white/80 dark:bg-stone-900/80 px-3 py-2 text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-rust-400/40"
+      >
+        {Array.from({ length: 14 }, (_, i) => i + 1).map((d) => (
+          <option key={d} value={d}>
+            {d}d
+          </option>
+        ))}
+      </select>
+      <select
+        value={mealsPerDay}
+        onChange={(e) => setMealsPerDay(parseInt(e.target.value, 10))}
+        className="rounded-lg border border-stone-200 dark:border-stone-600 bg-white/80 dark:bg-stone-900/80 px-3 py-2 text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-rust-400/40"
+      >
+        <option value={1}>1 meal</option>
+        <option value={2}>2 meals</option>
+        <option value={3}>3 meals</option>
+      </select>
       <button
         onClick={handleRegenerate}
-        className="px-5 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm transition-colors"
+        className="px-4 py-2 rounded-lg bg-rust-500/85 hover:bg-rust-600 text-white text-sm font-medium transition-colors"
       >
         Generate Plan
       </button>

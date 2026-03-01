@@ -5,18 +5,17 @@ interface LoadingGridProps {
 
 export default function LoadingGrid({ numDays, mealsPerDay }: LoadingGridProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="flex gap-4 overflow-x-auto pb-4 mt-6">
       {Array.from({ length: numDays }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-sm p-4 flex flex-col gap-3 animate-pulse"
+          className="shrink-0 w-[260px] rounded-xl bg-white/90 dark:bg-stone-900/90 border border-stone-200/60 dark:border-stone-700/50 shadow-sm p-3 animate-pulse"
         >
-          <div className="h-3 bg-stone-200 dark:bg-stone-700 rounded w-2/3" />
+          <div className="h-3 bg-stone-200 dark:bg-stone-700 rounded w-2/3 mb-3" />
           {Array.from({ length: mealsPerDay }).map((_, j) => (
-            <div key={j} className="flex flex-col gap-2">
-              <div className="h-32 bg-stone-200 dark:bg-stone-700 rounded-lg" />
+            <div key={j} className="py-2 border-b border-stone-100 dark:border-stone-800 last:border-0">
+              <div className="h-2 bg-stone-200 dark:bg-stone-700 rounded w-1/4 mb-1" />
               <div className="h-3 bg-stone-200 dark:bg-stone-700 rounded w-full" />
-              <div className="h-3 bg-stone-200 dark:bg-stone-700 rounded w-1/2" />
             </div>
           ))}
         </div>

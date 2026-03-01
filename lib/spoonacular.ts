@@ -7,7 +7,6 @@ import type { ExtractedConstraints } from "./types";
 type SpoonacularConstraints = Pick<
   ExtractedConstraints,
   | "excludeIngredients"
-  | "includeIngredients"
   | "preferredCuisines"
   | "excludeCuisine"
   | "diet"
@@ -61,8 +60,6 @@ export function toSpoonacularParams(
   // Arrays → comma-separated strings (Spoonacular format)
   if (constraints.excludeIngredients?.length)
     params.excludeIngredients = constraints.excludeIngredients.join(",");
-  if (constraints.includeIngredients?.length)
-    params.includeIngredients = constraints.includeIngredients.join(",");
   if (constraints.preferredCuisines?.length)
     params.cuisine = constraints.preferredCuisines.join(",");
   if (constraints.excludeCuisine?.length)
