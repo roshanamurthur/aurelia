@@ -71,6 +71,14 @@ export const toolDefinitions: ChatCompletionTool[] = [
             description: "'delivery' (DoorDash), 'groceries' (Instacart), or 'dine-in' (OpenTable).",
           },
           deliveryAddress: { type: "string", description: "User's delivery address." },
+          takeoutDays: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            },
+            description: "Days for takeout/delivery. e.g. ['friday', 'saturday'].",
+          },
         },
         required: [],
       },
@@ -137,7 +145,11 @@ export const toolDefinitions: ChatCompletionTool[] = [
             description: "Meal slot.",
           },
           recipeId: { type: "string", description: "Spoonacular recipe ID for home-cooked meals, or a placeholder like 'takeout-doordash' for takeout." },
-          recipeName: { type: "string", description: "Display name of the recipe or takeout meal." },
+          recipeName: {
+            type: "string",
+            description:
+              "Display name. For TAKEOUT: use EXACT names from get_sf_meals (e.g. 'Ike's Love and Sandwiches Menage a Trois'). Never use generic labels like 'Mexican takeout'.",
+          },
           recipeImageUrl: { type: "string", description: "URL of recipe image." },
           sourceUrl: { type: "string", description: "URL of the recipe source page." },
           calories: { type: "number", description: "Calories per serving." },
@@ -241,6 +253,20 @@ export const toolDefinitions: ChatCompletionTool[] = [
             items: { type: "string" },
             description: "Recipe IDs to exclude (e.g. manually overridden meals to preserve). These will not be assigned to any slot.",
           },
+          takeoutDays: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            },
+            description:
+              "Days when the user wants takeout/delivery. Those day+slot combos get exact SF meal names from our curated list (e.g. Ike's Love and Sandwiches Menage a Trois). Pass from user prefs or conversation.",
+          },
+          takeoutSlots: {
+            type: "array",
+            items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+            description: "Which meal slots are takeout on takeoutDays. Default: ['lunch','dinner'].",
+          },
         },
         required: ["mealPlanId", "days", "mealSlots"],
       },
@@ -250,6 +276,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
   // ═══════════════════════════════════════════
   // RECIPE DISCOVERY TOOLS
   // ═══════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "get_sf_meals",
+      description:
+        "Returns the curated list of SF restaurant meals for takeout. Use these EXACT names when calling update_meal for takeout (recipeName). Never use generic labels like 'Mexican takeout'.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
   {
     type: "function",
     function: {

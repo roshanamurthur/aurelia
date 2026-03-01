@@ -3,9 +3,10 @@
 import Chat from "@/app/components/Chat";
 import SignOutButton from "@/app/components/SignOutButton";
 import TakeoutOrderButton from "@/app/components/TakeoutOrderButton";
+import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
 
 type ExpandedRecipe = { day: string; mealType: string } | null;
@@ -29,6 +30,11 @@ export default function MealPlanPage() {
   const [instacartOrdering, setInstacartOrdering] = useState(false);
   const [instacartResult, setInstacartResult] = useState<string | null>(null);
   const [instacartError, setInstacartError] = useState<string | null>(null);
+  const [selectedGroceryIndices, setSelectedGroceryIndices] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setSelectedGroceryIndices(new Set());
+  }, [groceryList?.items?.length]);
 
   if (isLoading) {
     return (
@@ -53,10 +59,17 @@ export default function MealPlanPage() {
   };
 
   const getDayCalories = (day: string) => {
-    if (!activePlan?.meals) return 0;
-    return activePlan.meals
-      .filter((m: any) => m.day === day && !m.isSkipped)
-      .reduce((sum: number, m: any) => sum + (m.calories || 0), 0);
+    let total = 0;
+    for (const mealType of mealTypes) {
+      const meal = getMeal(day, mealType);
+      if (meal) {
+        const cal = meal.calories ?? (meal.isTakeout ? getTakeoutCalories(meal.recipeName) : undefined);
+        total += cal ?? 0;
+      } else {
+        total += getCaloriesForSlot(day, mealType) ?? 0;
+      }
+    }
+    return total;
   };
 
   const addFridgeItems = () => {
@@ -77,6 +90,8 @@ export default function MealPlanPage() {
     setFridgeItems((prev) => prev.filter((i) => i.id !== id));
   };
 
+  // Maps ingredient labels → Spoonacular CDN slugs. Source: https://img.spoonacular.com/ingredients_100x100/{slug}.jpg
+  // See docs/INGREDIENT_ICONS.md for how to add more.
   const INGREDIENT_IMAGE_MAP: Record<string, string> = {
     potatoes: "potato",
     tomatoes: "tomato",
@@ -108,7 +123,9 @@ export default function MealPlanPage() {
     "green onions": "scallions",
     scallions: "scallions",
     lemon: "lemon",
+    lemons: "lemon",
     lime: "lime",
+    limes: "lime",
     "olive oil": "olive-oil",
     "soy sauce": "soy-sauce",
     "sesame oil": "sesame-oil",
@@ -138,6 +155,84 @@ export default function MealPlanPage() {
     "coconut milk": "coconut-milk",
     "fish sauce": "fish-sauce",
     "oyster sauce": "oyster-sauce",
+    spinach: "spinach",
+    lettuce: "lettuce",
+    "romaine lettuce": "lettuce",
+    mushrooms: "mushroom",
+    mushroom: "mushroom",
+    zucchini: "zucchini",
+    squash: "squash",
+    avocado: "avocado",
+    avocados: "avocado",
+    banana: "banana",
+    bananas: "banana",
+    apple: "apple",
+    apples: "apple",
+    orange: "orange",
+    oranges: "orange",
+    strawberry: "strawberry",
+    strawberries: "strawberry",
+    blueberry: "blueberry",
+    blueberries: "blueberry",
+    raspberry: "raspberry",
+    raspberries: "raspberry",
+    blackberry: "blackberry",
+    blackberries: "blackberry",
+    salmon: "salmon",
+    shrimp: "shrimp",
+    pork: "pork",
+    tuna: "tuna",
+    cod: "cod",
+    rice: "rice",
+    pasta: "pasta",
+    "spaghetti": "pasta",
+    bread: "bread",
+    oats: "oats",
+    "rolled oats": "oats",
+    almond: "almonds",
+    almonds: "almonds",
+    walnut: "walnuts",
+    walnuts: "walnuts",
+    "peanut butter": "peanut-butter",
+    yogurt: "yogurt",
+    "greek yogurt": "yogurt",
+    "sour cream": "sour-cream",
+    "heavy cream": "cream",
+    cream: "cream",
+    "maple syrup": "maple-syrup",
+    "vanilla extract": "vanilla-extract",
+    "baking powder": "baking-powder",
+    "baking soda": "baking-soda",
+    paprika: "paprika",
+    "chili powder": "chili-powder",
+    cumin: "cumin",
+    oregano: "oregano",
+    thyme: "thyme",
+    rosemary: "rosemary",
+    "bay leaves": "bay-leaves",
+    "bay leaf": "bay-leaves",
+    turmeric: "turmeric",
+    cinnamon: "cinnamon",
+    nutmeg: "nutmeg",
+    "red onion": "onion",
+    "white onion": "onion",
+    "yellow onion": "onion",
+    kale: "kale",
+    "sweet potato": "sweet-potato",
+    "sweet potatoes": "sweet-potato",
+    corn: "corn",
+    peas: "peas",
+    "green beans": "green-beans",
+    asparagus: "asparagus",
+    cauliflower: "cauliflower",
+    cabbage: "cabbage",
+    "brussels sprouts": "brussels-sprouts",
+    tofu: "tofu",
+    lentils: "lentils",
+    "black beans": "black-beans",
+    "kidney beans": "kidney-beans",
+    chickpeas: "chickpeas",
+    quinoa: "quinoa",
   };
 
   const getIngredientImageUrl = (label: string) => {
@@ -151,6 +246,30 @@ export default function MealPlanPage() {
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "");
     return `https://img.spoonacular.com/ingredients_100x100/${slug}.jpg`;
+  };
+
+  const INGREDIENT_EMOJI_MAP: Record<string, string> = {
+    "bell pepper": "🫑", "bell peppers": "🫑", "green pepper": "🫑", "red pepper": "🫑", "yellow pepper": "🫑",
+    pepper: "🌶️", peppers: "🫑", tomato: "🍅", tomatoes: "🍅", onion: "🧅", onions: "🧅",
+    garlic: "🧄", ginger: "🫚", carrot: "🥕", carrots: "🥕", celery: "🥬", broccoli: "🥦", potato: "🥔", potatoes: "🥔",
+    parsley: "🌿", basil: "🌿", cilantro: "🌿", lettuce: "🥬", spinach: "🥬", kale: "🥬", mushroom: "🍄", mushrooms: "🍄",
+    zucchini: "🥒", squash: "🎃", avocado: "🥑", lemon: "🍋", lemons: "🍋", lime: "🍋", limes: "🍋",
+    apple: "🍎", apples: "🍎", banana: "🍌", bananas: "🍌", orange: "🍊", oranges: "🍊", strawberry: "🍓", strawberries: "🍓",
+    blueberry: "🫐", blueberries: "🫐", raspberry: "🍇", raspberries: "🍇", blackberry: "🫐", blackberries: "🫐",
+    chicken: "🍗", beef: "🥩", pork: "🥩", salmon: "🐟", shrimp: "🍤", egg: "🥚", eggs: "🥚",
+    cheese: "🧀", milk: "🥛", butter: "🧈", bread: "🍞", rice: "🍚", pasta: "🍝", flour: "🌾",
+    honey: "🍯", sugar: "🍬", salt: "🧂", "olive oil": "🫒", olive: "🫒", coconut: "🥥", tofu: "🧈", lentils: "🫘",
+    peas: "🫛", corn: "🌽", asparagus: "🌿", cauliflower: "🥦", cabbage: "🥬",
+    quinoa: "🌾", oats: "🌾", almond: "🥜", almonds: "🥜", walnut: "🥜", walnuts: "🥜",
+    scallions: "🧅", "green onions": "🧅", vinegar: "🫙", "soy sauce": "🫙", "sesame oil": "🫒",
+    "chicken broth": "🍗", "vegetable broth": "🫙", "beef broth": "🥩",
+    water: "💧", ice: "🧊", oil: "🫒", cream: "🥛", yogurt: "🥛", "sour cream": "🥛",
+  };
+  const getIngredientFallback = (label: string) => {
+    const key = label.toLowerCase().trim().replace(/\s+/g, " ");
+    const words = key.split(/\s+/);
+    const emoji = INGREDIENT_EMOJI_MAP[key] ?? INGREDIENT_EMOJI_MAP[words[words.length - 1]!];
+    return emoji ?? label.charAt(0).toUpperCase();
   };
 
   // Client-side synonym map for grocery list deduplication
@@ -279,7 +398,7 @@ export default function MealPlanPage() {
               </div>
             ) : (
               <>
-                <div className="mb-8">
+                <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <h1 className="font-display text-3xl font-semibold text-stone-800 dark:text-stone-100">
                     {(() => {
                       const hour = new Date().getHours();
@@ -289,6 +408,12 @@ export default function MealPlanPage() {
                       return `${greeting}, ${name}`;
                     })()}
                   </h1>
+                  <button
+                    type="button"
+                    className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors"
+                  >
+                    Schedule all deliveries
+                  </button>
                 </div>
 
                 {/* Day cards + nutrition widget */}
@@ -321,7 +446,11 @@ export default function MealPlanPage() {
                                 </p>
                                 {meal ? (
                                   meal.isTakeout ? (
-                                    <TakeoutOrderButton variant="card" searchIntent={meal.recipeName} />
+                                    <TakeoutOrderButton
+                                      variant="card"
+                                      searchIntent={meal.recipeName}
+                                      slotKey={`${day}-${mealType}`}
+                                    />
                                   ) : (
                                   <div>
                                     {(meal.recipeImageUrl || meal.sourceUrl || meal.recipeId) ? (
@@ -405,7 +534,7 @@ export default function MealPlanPage() {
                                   )
                                 ) : (
                                   <div className="flex-1 flex items-start">
-                                    <TakeoutOrderButton variant="card" />
+                                    <TakeoutOrderButton variant="card" slotKey={`${day}-${mealType}`} />
                                   </div>
                                 )}
                               </div>
@@ -418,11 +547,11 @@ export default function MealPlanPage() {
                   {/* Nutrition widget - macro ring, next to Sunday */}
                   {activePlan.meals && activePlan.meals.length > 0 && (() => {
                     const nonSkipped = activePlan.meals.filter((m: any) => !m.isSkipped);
-                    const totalCal = nonSkipped.reduce((s: number, m: any) => s + (m.calories || 0), 0);
+                    const totalCal = days.reduce((s, d) => s + getDayCalories(d), 0);
                     const totalProtein = nonSkipped.reduce((s: number, m: any) => s + (m.protein || 0), 0);
                     const totalCarbs = nonSkipped.reduce((s: number, m: any) => s + (m.carbs || 0), 0);
                     const totalFat = nonSkipped.reduce((s: number, m: any) => s + (m.fat || 0), 0);
-                    const numDays = new Set(nonSkipped.map((m: any) => m.day)).size || 1;
+                    const numDays = Math.max(1, days.filter((d) => getDayCalories(d) > 0).length);
                     const numMeals = nonSkipped.length;
                     const calPerDay = Math.round(totalCal / numDays);
                     const proteinPerDay = Math.round(totalProtein / numDays);
@@ -522,15 +651,14 @@ export default function MealPlanPage() {
                             className="w-10 h-10 rounded-lg object-cover"
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
-                              const fb = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (fb) fb.classList.remove("hidden");
+                              e.currentTarget.nextElementSibling?.classList.remove("hidden");
                             }}
                           />
                           <span
-                            className="hidden absolute inset-0 w-10 h-10 rounded-lg bg-stone-200 dark:bg-stone-600 flex items-center justify-center text-sm font-semibold text-stone-600 dark:text-stone-400"
+                            className="hidden absolute inset-0 w-10 h-10 rounded-lg bg-stone-100 dark:bg-stone-700 flex items-center justify-center text-lg font-semibold text-stone-600 dark:text-stone-400"
                             aria-hidden
                           >
-                            {item.label.charAt(0).toUpperCase()}
+                            {getIngredientFallback(item.label)}
                           </span>
                         </div>
                         <span className="text-[10px] font-medium text-stone-600 dark:text-stone-400 max-w-[70px] truncate text-center">
@@ -582,31 +710,46 @@ export default function MealPlanPage() {
                   (groceryList?.items && groceryList.items.length > 0) ? (
                     <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 overflow-y-auto">
                       <div className="grid grid-cols-3 gap-2">
-                        {getDedupedGroceryItems().map((item: { name: string }, i: number) => {
+                        {getDedupedGroceryItems().map((item: { name: string; amount?: number; unit?: string }, i: number) => {
                               const canonicalKey = getGroceryCanonicalKey(item.name);
                               const displayName =
                                 canonicalKey.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                              const isSelected = selectedGroceryIndices.has(i);
                               return (
                           <div
                             key={`${item.name}-${i}`}
-                            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-white dark:bg-stone-700/80 border border-stone-200 dark:border-stone-600 min-w-0"
+                            className={`flex flex-col items-center gap-1 p-2 rounded-xl border min-w-0 cursor-pointer transition-colors ${
+                              isSelected
+                                ? "bg-rust-50/80 dark:bg-rust-950/30 border-rust-200 dark:border-rust-800"
+                                : "bg-white dark:bg-stone-700/80 border-stone-200 dark:border-stone-600"
+                            }`}
+                            onClick={() => {
+                              setSelectedGroceryIndices((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              });
+                            }}
                           >
                             <div className="relative w-full aspect-square max-w-12 shrink-0">
+                              {isSelected && (
+                                <span className="absolute top-0 right-0 z-10 w-4 h-4 rounded-full bg-rust-500 flex items-center justify-center text-white text-[10px]">✓</span>
+                              )}
                               <img
                                 src={getIngredientImageUrl(displayName)}
                                 alt=""
                                 className="w-full h-full rounded-lg object-cover"
                                 onError={(e) => {
                                   e.currentTarget.style.display = "none";
-                                  const fb = e.currentTarget.nextElementSibling as HTMLElement;
-                                  if (fb) fb.classList.remove("hidden");
+                                  e.currentTarget.nextElementSibling?.classList.remove("hidden");
                                 }}
                               />
                               <span
-                                className="hidden absolute inset-0 w-full h-full rounded-lg bg-stone-200 dark:bg-stone-600 flex items-center justify-center text-sm font-semibold text-stone-600 dark:text-stone-400"
+                                className="hidden absolute inset-0 w-full h-full rounded-lg bg-stone-100 dark:bg-stone-700 flex items-center justify-center text-xl font-semibold text-stone-600 dark:text-stone-400"
                                 aria-hidden
                               >
-                                {displayName.charAt(0).toUpperCase()}
+                                {getIngredientFallback(displayName)}
                               </span>
                             </div>
                             <span className="text-[10px] font-medium text-stone-600 dark:text-stone-400 w-full truncate text-center">
@@ -618,11 +761,28 @@ export default function MealPlanPage() {
                       </div>
                       {getDedupedGroceryItems().length > 0 && (
                         <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGroceryIndices(new Set(getDedupedGroceryItems().map((_, i) => i)))}
+                              className="text-rust-600 dark:text-rust-400 hover:underline"
+                            >
+                              Select all
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedGroceryIndices(new Set())}
+                              className="text-stone-500 dark:text-stone-400 hover:underline"
+                            >
+                              Clear
+                            </button>
+                          </div>
                           <button
                             type="button"
                             onClick={async () => {
                               const items = getDedupedGroceryItems();
-                              if (items.length === 0) return;
+                              const toOrder = items.filter((_, i) => selectedGroceryIndices.has(i));
+                              if (toOrder.length === 0) return;
                               setInstacartOrdering(true);
                               setInstacartResult(null);
                               setInstacartError(null);
@@ -631,7 +791,7 @@ export default function MealPlanPage() {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({
-                                    items: items.map((i: { name: string; amount?: number; unit?: string }) => ({
+                                    items: toOrder.map((i: { name: string; amount?: number; unit?: string }) => ({
                                       name: i.name,
                                       amount: i.amount,
                                       unit: i.unit,
@@ -653,10 +813,12 @@ export default function MealPlanPage() {
                                 setInstacartOrdering(false);
                               }
                             }}
-                            disabled={instacartOrdering}
+                            disabled={instacartOrdering || selectedGroceryIndices.size === 0}
                             className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-60 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
                           >
-                            {instacartOrdering ? "Adding to Instacart…" : "Order on Instacart"}
+                            {instacartOrdering
+                              ? "Adding to Instacart…"
+                              : `Order ${selectedGroceryIndices.size} item${selectedGroceryIndices.size !== 1 ? "s" : ""} on Instacart`}
                           </button>
                           {instacartResult && (
                             <p className="text-xs text-rust-600 dark:text-rust-400">{instacartResult}</p>

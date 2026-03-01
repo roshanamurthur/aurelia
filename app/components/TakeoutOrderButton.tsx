@@ -55,13 +55,29 @@ function pickRandomMeal(exclude?: string | null): string {
   return list[Math.floor(Math.random() * list.length)]!;
 }
 
+/** Deterministic meal for a slot — same slot always shows same suggested meal. */
+function pickMealForSlot(slotKey: string): string {
+  let hash = 0;
+  for (let i = 0; i < slotKey.length; i++) {
+    hash = (hash << 5) - hash + slotKey.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % SF_MEALS.length;
+  return SF_MEALS[idx]!;
+}
+
 interface TakeoutOrderButtonProps {
   variant?: "card" | "button";
   /** When provided, skip the random-proposal step and order this item directly */
   searchIntent?: string;
+  /** e.g. "friday-dinner" — used as fallback when searchIntent is empty, so every slot shows a specific meal */
+  slotKey?: string;
 }
 
-export default function TakeoutOrderButton({ variant = "button", searchIntent }: TakeoutOrderButtonProps) {
+export default function TakeoutOrderButton({ variant = "button", searchIntent, slotKey }: TakeoutOrderButtonProps) {
+  const baseMeal = searchIntent?.trim() || (slotKey ? pickMealForSlot(slotKey) : null);
+  const [overrideMeal, setOverrideMeal] = useState<string | null>(null);
+  const displayMeal = overrideMeal ?? baseMeal;
   const [status, setStatus] = useState<OrderStatus>("idle");
   const [proposedItem, setProposedItem] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -94,60 +110,65 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
     }
   };
 
-  const proposeTakeout = () => {
-    if (searchIntent) {
-      placeOrder(searchIntent);
-      return;
+  const handleOrder = () => {
+    if (displayMeal) {
+      placeOrder(displayMeal);
+    } else {
+      const picked = pickRandomMeal();
+      setOverrideMeal(picked);
+      placeOrder(picked);
     }
-    setProposedItem(pickRandomMeal());
-    setStatus("proposing");
-    setResult(null);
-    setLiveUrl(null);
-    setError(null);
   };
 
-  const disapproveAndRegenerate = () => {
-    setProposedItem((current) => pickRandomMeal(current));
+  const handleDifferent = () => {
+    if (displayMeal) {
+      setOverrideMeal(pickRandomMeal(displayMeal));
+    } else {
+      setOverrideMeal(pickRandomMeal());
+    }
   };
 
-  const confirmAndOrder = async () => {
-    if (!proposedItem) return;
-    placeOrder(proposedItem);
+  const openApproveFlow = () => {
+    if (!baseMeal) {
+      setOverrideMeal(pickRandomMeal());
+      if (variant === "button") setStatus("proposing");
+    }
   };
 
   if (variant === "card") {
     return (
       <div className="flex-1 flex flex-col w-full gap-2">
         {status === "idle" && (
-          <button
-            type="button"
-            onClick={proposeTakeout}
-            className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
-          >
-            Order Takeout
-          </button>
-        )}
-        {status === "proposing" && proposedItem && (
-          <div className="w-full space-y-2">
-            <p className="text-xs text-stone-500 dark:text-stone-400">We&apos;ll order:</p>
-            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{proposedItem}</p>
-            <div className="flex gap-2 w-full">
-              <button
-                type="button"
-                onClick={confirmAndOrder}
-                className="flex-1 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={disapproveAndRegenerate}
-                className="flex-1 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
-              >
-                Different item
-              </button>
+          displayMeal ? (
+            <div className="w-full text-left py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-600 bg-white dark:bg-stone-800/80 hover:border-rust-300 dark:hover:border-rust-700 transition-colors">
+              <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{displayMeal}</p>
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={handleOrder}
+                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:text-rust-700 dark:hover:text-rust-300 hover:underline"
+                >
+                  Order
+                </button>
+                <span className="text-stone-300 dark:text-stone-600">·</span>
+                <button
+                  type="button"
+                  onClick={handleDifferent}
+                  className="text-[10px] font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:underline"
+                >
+                  Different item
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={openApproveFlow}
+              className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+            >
+              Order Takeout
+            </button>
+          )
         )}
         {status === "ordering" && (
           <div className="text-center px-2">
@@ -169,7 +190,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
           <div className="w-full text-center">
             <p className="text-sm text-rust-600 dark:text-rust-400 font-medium">Added to cart</p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{proposedItem}</p>
-            <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
+            <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
               Order another
             </button>
           </div>
@@ -178,7 +199,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
           <div className="w-full text-center">
             <p className="text-sm text-stone-700 dark:text-stone-300 font-medium">Failed</p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{error}</p>
-            <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
+            <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
               Try again
             </button>
           </div>
@@ -193,7 +214,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
       {status === "idle" && (
         <button
           type="button"
-          onClick={proposeTakeout}
+          onClick={openApproveFlow}
           className="px-4 py-2 rounded-xl text-sm font-medium bg-rust-500/90 hover:bg-rust-600 text-white transition-all active:scale-[0.97] shadow-sm flex items-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -204,23 +225,23 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
           Order Takeout
         </button>
       )}
-      {status === "proposing" && proposedItem && (
+      {status === "proposing" && displayMeal && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
           <span className="text-sm text-stone-600 dark:text-stone-400">Order:</span>
-          <span className="text-sm font-medium text-stone-800 dark:text-stone-200 max-w-[180px] truncate" title={proposedItem}>
-            {proposedItem}
+          <span className="text-sm font-medium text-stone-800 dark:text-stone-200 max-w-[180px] truncate" title={displayMeal}>
+            {displayMeal}
           </span>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={confirmAndOrder}
+              onClick={handleOrder}
               className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
             >
-              Approve
+              Order
             </button>
             <button
               type="button"
-              onClick={disapproveAndRegenerate}
+              onClick={handleDifferent}
               className="px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
             >
               Different
@@ -246,7 +267,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
       {status === "success" && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-rust-50/80 dark:bg-rust-950/20 border border-rust-200/60 dark:border-rust-800/40">
           <span className="text-sm text-rust-600 dark:text-rust-400 font-medium">{proposedItem} added to cart</span>
-          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
             Again
           </button>
         </div>
@@ -254,7 +275,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent }:
       {status === "error" && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
           <span className="text-sm text-stone-700 dark:text-stone-300">{error}</span>
-          <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
             Try again
           </button>
         </div>

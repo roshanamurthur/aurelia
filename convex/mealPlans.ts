@@ -1,6 +1,6 @@
-import { query, mutation } from "./_generated/server";
-import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 export const create = mutation({
   args: {
@@ -247,6 +247,9 @@ export const batchUpsertMeals = mutation({
             })
           )
         ),
+        isTakeout: v.optional(v.boolean()),
+        takeoutService: v.optional(v.string()),
+        takeoutDetails: v.optional(v.string()),
       })
     ),
   },
@@ -268,6 +271,10 @@ export const batchUpsertMeals = mutation({
         )
         .first();
 
+      const isTakeout = meal.isTakeout ?? false;
+      const takeoutService = isTakeout ? (meal.takeoutService ?? "doordash") : undefined;
+      const takeoutDetails = isTakeout ? meal.takeoutDetails : undefined;
+
       if (existing) {
         await ctx.db.patch(existing._id, {
           recipeId: meal.recipeId,
@@ -278,12 +285,12 @@ export const batchUpsertMeals = mutation({
           protein: meal.protein,
           carbs: meal.carbs,
           fat: meal.fat,
-          ingredients: meal.ingredients,
+          ingredients: isTakeout ? undefined : meal.ingredients,
           isManualOverride: false,
           isSkipped: false,
-          isTakeout: undefined,
-          takeoutService: undefined,
-          takeoutDetails: undefined,
+          isTakeout: isTakeout || undefined,
+          takeoutService,
+          takeoutDetails,
         });
         results.push({ day: meal.day, mealType: meal.mealType, updated: true });
       } else {
@@ -300,8 +307,11 @@ export const batchUpsertMeals = mutation({
           protein: meal.protein,
           carbs: meal.carbs,
           fat: meal.fat,
-          ingredients: meal.ingredients,
+          ingredients: isTakeout ? undefined : meal.ingredients,
           isManualOverride: false,
+          isTakeout: isTakeout || undefined,
+          takeoutService,
+          takeoutDetails,
         });
         results.push({ day: meal.day, mealType: meal.mealType, updated: false });
       }

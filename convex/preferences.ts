@@ -60,6 +60,7 @@ export const update = mutation({
     mealSlots: v.optional(v.array(v.string())),
     preferredOrderMethod: v.optional(v.string()),
     deliveryAddress: v.optional(v.string()),
+    takeoutDays: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);

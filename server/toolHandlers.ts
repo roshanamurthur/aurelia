@@ -9,6 +9,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import Supermemory from "supermemory";
 import { api } from "../convex/_generated/api";
+import { SF_MEALS, pickTakeoutMealForSlot } from "./sfMeals";
 
 export function createToolHandlers(authToken: string) {
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -109,9 +110,16 @@ export function createToolHandlers(authToken: string) {
         }
       }
 
-      // For takeout meals, clear ingredients
-      if (args.isTakeout) {
+      // For takeout meals, clear ingredients and auto-fill calories from SF_MEALS if missing
+      let calories = args.calories;
+      if (args.isTakeout && args.recipeName) {
         ingredients = undefined;
+        if (calories == null) {
+          const match = SF_MEALS.find(
+            (m) => m.name.toLowerCase().trim() === String(args.recipeName).toLowerCase().trim()
+          );
+          if (match) calories = match.calories;
+        }
       }
 
       // Soft dedup check: warn about duplicates but still allow the write
@@ -142,7 +150,7 @@ export function createToolHandlers(authToken: string) {
         recipeName: args.recipeName,
         recipeImageUrl: args.recipeImageUrl,
         sourceUrl: args.sourceUrl,
-        calories: args.calories,
+        calories: calories ?? args.calories,
         protein: args.protein,
         carbs: args.carbs,
         fat: args.fat,
@@ -164,6 +172,10 @@ export function createToolHandlers(authToken: string) {
       const days = (args.days as string[]).map((d: string) => d.toLowerCase());
       const mealSlots = (args.mealSlots as string[]).map((s: string) => s.toLowerCase());
       const excludeRecipeIds = args.excludeRecipeIds || [];
+      const takeoutDays = ((args.takeoutDays as string[]) || []).map((d: string) => d.toLowerCase());
+      const takeoutSlots = ((args.takeoutSlots as string[]) || ["lunch", "dinner"]).map((s: string) => s.toLowerCase());
+      const isTakeoutSlot = (day: string, slot: string) =>
+        takeoutDays.includes(day) && takeoutSlots.includes(slot);
 
       // Guard: Spoonacular API key must exist
       const spoonKey = process.env.SPOONACULAR_API_KEY;
@@ -271,7 +283,7 @@ export function createToolHandlers(authToken: string) {
         }
       }
 
-      // Assign recipes to slots
+      // Assign recipes to slots (skip takeout slots — filled separately)
       const meals: any[] = [];
       const typeIndex: Record<string, number> = {};
       for (const slot of uniqueSlots) {
@@ -280,6 +292,20 @@ export function createToolHandlers(authToken: string) {
 
       for (const day of days) {
         for (const slot of mealSlots) {
+          if (isTakeoutSlot(day, slot)) {
+            const takeout = pickTakeoutMealForSlot(day, slot);
+            meals.push({
+              day,
+              mealType: slot,
+              recipeId: "takeout-doordash",
+              recipeName: takeout.name,
+              calories: takeout.calories,
+              isTakeout: true,
+              takeoutService: "doordash",
+            });
+            continue;
+          }
+
           const pool = recipesByType[slot] || [];
           const idx = typeIndex[slot] || 0;
           if (idx >= pool.length) continue; // No more unique recipes available
@@ -374,6 +400,10 @@ export function createToolHandlers(authToken: string) {
     // ═══════════════════════════════════════════
     // EXTERNAL API HANDLERS — Spoonacular
     // ═══════════════════════════════════════════
+
+    get_sf_meals: async () => {
+      return { meals: SF_MEALS.map((m) => m.name) };
+    },
 
     search_recipes: async (args: any) => {
       const params = new URLSearchParams({

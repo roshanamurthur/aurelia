@@ -1,6 +1,6 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { authTables } from "@convex-dev/auth/server";
 
 const schema = defineSchema({
   ...authTables,
@@ -20,6 +20,7 @@ const schema = defineSchema({
     mealSlots: v.optional(v.array(v.string())),
     preferredOrderMethod: v.optional(v.string()),
     deliveryAddress: v.optional(v.string()),
+    takeoutDays: v.optional(v.array(v.string())),
   }).index("by_userId", ["userId"]),
 
   mealPlans: defineTable({

@@ -4,12 +4,12 @@
 // It routes messages between the OpenAI API and the tool handlers.
 
 import OpenAI from "openai";
+import {
+    ChatCompletionMessageParam,
+    ChatCompletionToolMessageParam,
+} from "openai/resources/chat/completions";
 import { toolDefinitions } from "./toolDefinitions";
 import { createToolHandlers } from "./toolHandlers";
-import {
-  ChatCompletionMessageParam,
-  ChatCompletionToolMessageParam,
-} from "openai/resources/chat/completions";
 
 const openai = new OpenAI({
   apiKey: process.env.AURELIA_LLM_API_KEY,
@@ -26,10 +26,10 @@ RULES:
 2. For preference updates: call update_preferences first, then re-evaluate affected meals in the current plan. Skip meals where isManualOverride is true.
 3. For one-time plan edits: modify the plan directly. Do NOT update preferences.
 4. INGREDIENT PERSISTENCE: When calling update_meal for home-cooked meals, ALWAYS include the complete ingredients array from search_recipes or get_recipe_details. If search_recipes didn't return ingredients, call get_recipe_details first. Meals without ingredients produce empty grocery lists.
-5. When populating OR regenerating a full weekly plan: get preferences, create/get the plan, then call populate_meal_plan ONCE with the dietary constraints and the existing mealPlanId. Do NOT call search_recipes + update_meal individually for each slot — that is slow. Only use search_recipes + update_meal for individual meal swaps after the plan exists. If populate_meal_plan returns success: false, tell the user what went wrong (API error, no results, etc.).
+5. When populating OR regenerating a full weekly plan: get preferences, create/get the plan, then call populate_meal_plan ONCE with the dietary constraints and the existing mealPlanId. Pass takeoutDays from get_preferences if present. Do NOT call search_recipes + update_meal individually for each slot — that is slow. Only use search_recipes + update_meal for individual meal swaps after the plan exists. If populate_meal_plan returns success: false, tell the user what went wrong (API error, no results, etc.).
 6. Before initiating any order (DoorDash, Instacart, OpenTable), confirm the details with the user.
 7. After modifying multiple meals or the full plan, offer to regenerate the grocery list. Do not offer after every single meal swap.
-8. TAKEOUT HANDLING: When the user requests takeout or delivery for a meal slot, do NOT search Spoonacular. Instead call update_meal with isTakeout=true, a placeholder recipeId (e.g. "takeout-doordash"), takeoutService="doordash", and the meal name as recipeName. DoorDash is the default and only takeout service — do NOT ask the user which service they want. Instacart is for grocery delivery only, not takeout. Do NOT call initiate_doordash_order automatically — the user will place the order themselves via the UI button.
+8. TAKEOUT HANDLING: When the user requests takeout or delivery for a meal slot, do NOT search Spoonacular. Call get_sf_meals first to get the exact meal names, then call update_meal with isTakeout=true, recipeId="takeout-doordash", takeoutService="doordash", and recipeName set to an EXACT name from get_sf_meals (e.g. "Ike's Love and Sandwiches Menage a Trois"). Never use generic labels like "Mexican takeout". When populating a full plan, pass takeoutDays to populate_meal_plan if the user has takeout days (e.g. "Fridays") — those slots get exact SF meal names automatically.
 9. MIXED MEAL TYPES: Plans can contain a mix of home-cooked meals, takeout/delivery, restaurant reservations, and skipped slots. The grocery list automatically excludes takeout and skipped meals.
 10. TYPE CONVERSION: To convert a takeout slot back to home-cooked, call update_meal with isTakeout omitted/false, a valid Spoonacular recipeId, and the full ingredients array. The takeout fields will be cleared automatically.
 11. RESPONSE FORMAT: Keep responses short and conversational — like texting a friend, not writing documentation. After updating a meal, just confirm what changed in one sentence (e.g. "Done, Monday breakfast is now Farmer's Strata with Kale and Tomatoes."). Do NOT include markdown formatting (no bold, headers, bullets, or images), nutrition breakdowns, ingredient lists, image URLs, or recipe details unless the user explicitly asks for that information. Never regurgitate raw tool output. If the user hasn't set preferences yet, guide them through setting up their dietary preferences before generating a plan.
