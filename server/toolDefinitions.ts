@@ -121,7 +121,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "update_meal",
       description:
-        "Assigns or replaces a recipe in a specific day/meal slot in the plan. You MUST call search_recipes first to get a valid recipeId — never invent a recipe ID. Set isManualOverride to true if the user explicitly requested this specific meal.",
+        "Assigns or replaces a meal in a specific day/meal slot. Two modes: (1) HOME-COOKED: search_recipes first, then call this with the Spoonacular recipeId and COMPLETE ingredients array. Meals without ingredients produce empty grocery lists. (2) TAKEOUT: set isTakeout=true, use a placeholder recipeId like 'takeout-doordash', and specify takeoutService. No ingredients needed for takeout.",
       parameters: {
         type: "object",
         properties: {
@@ -136,8 +136,8 @@ export const toolDefinitions: ChatCompletionTool[] = [
             enum: ["breakfast", "lunch", "dinner", "snack"],
             description: "Meal slot.",
           },
-          recipeId: { type: "string", description: "Spoonacular recipe ID." },
-          recipeName: { type: "string", description: "Display name of the recipe." },
+          recipeId: { type: "string", description: "Spoonacular recipe ID for home-cooked meals, or a placeholder like 'takeout-doordash' for takeout." },
+          recipeName: { type: "string", description: "Display name of the recipe or takeout meal." },
           recipeImageUrl: { type: "string", description: "URL of recipe image." },
           sourceUrl: { type: "string", description: "URL of the recipe source page." },
           calories: { type: "number", description: "Calories per serving." },
@@ -155,11 +155,24 @@ export const toolDefinitions: ChatCompletionTool[] = [
               },
               required: ["name", "amount", "unit"],
             },
-            description: "Ingredient list for this recipe.",
+            description: "REQUIRED for home-cooked meals — meals without ingredients produce empty grocery lists. Include the complete ingredient list from search_recipes or get_recipe_details. Not needed for takeout meals.",
           },
           isManualOverride: {
             type: "boolean",
             description: "Set true if the user explicitly chose this meal. Protects it from preference propagation.",
+          },
+          isTakeout: {
+            type: "boolean",
+            description: "Set true when the meal is takeout/delivery instead of home-cooked. Takeout meals are excluded from the grocery list.",
+          },
+          takeoutService: {
+            type: "string",
+            enum: ["doordash", "instacart", "opentable"],
+            description: "Which ordering service to use for this takeout meal.",
+          },
+          takeoutDetails: {
+            type: "string",
+            description: "JSON string with order metadata (restaurant name, special instructions, etc.).",
           },
         },
         required: ["mealPlanId", "day", "mealType", "recipeId", "recipeName", "isManualOverride"],
@@ -272,7 +285,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "initiate_doordash_order",
       description:
-        "Initiates a DoorDash delivery order for a specific planned meal. ALWAYS confirm the meal details and delivery address with the user before calling this.",
+        "Initiates a DoorDash delivery order for a specific planned meal. Call AFTER marking the slot as takeout with update_meal (isTakeout=true, takeoutService='doordash'). Triggers the Browser Use agent to place the order. ALWAYS confirm the meal details and delivery address with the user before calling this.",
       parameters: {
         type: "object",
         properties: {
@@ -318,6 +331,83 @@ export const toolDefinitions: ChatCompletionTool[] = [
           partySize: { type: "number", description: "Number of guests." },
         },
         required: ["mealPlanId", "cuisine", "location", "date", "time", "partySize"],
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // MEMORY TOOLS — SuperMemory (long-horizon taste intelligence)
+  // ═══════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "store_memory",
+      description:
+        "Stores a taste observation or preference insight in the user's long-term memory. Use this to capture nuanced signals that go beyond structured preferences — things like 'loves spicy Thai basil dishes', 'dislikes mushy textures', 'craves comfort food on rainy days', 'enjoys meal prepping on Sundays'. Call this whenever the user reveals a taste pattern, cooking habit, or food opinion during conversation. Each memory should be a single, specific observation.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description:
+              "A clear, specific observation about the user's taste or habits. Write as a declarative sentence. e.g. 'Prefers crunchy textures over soft ones', 'Enjoys Japanese-Peruvian fusion (Nikkei cuisine)'.",
+          },
+          category: {
+            type: "string",
+            enum: [
+              "taste_preference",
+              "texture_preference",
+              "cuisine_affinity",
+              "ingredient_opinion",
+              "cooking_habit",
+              "meal_feedback",
+            ],
+            description: "Category of the memory for better organization.",
+          },
+        },
+        required: ["content", "category"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "recall_memories",
+      description:
+        "Searches the user's long-term memory for relevant taste preferences and past observations. Call this BEFORE searching for recipes to incorporate nuanced taste intelligence beyond structured preferences. Also call this when the user asks 'what do you know about me?' or references past conversations. Use specific queries like 'breakfast preferences' or 'feelings about spicy food' for best results.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "Semantic search query. Be specific. e.g. 'breakfast preferences and morning routines', 'opinions on Italian food', 'texture preferences'.",
+          },
+          limit: {
+            type: "number",
+            description: "Max results to return (1-20). Default 10.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_taste_profile",
+      description:
+        "Retrieves the user's synthesized taste profile — a high-level summary of their food personality built from accumulated memories. Returns both static traits (enduring preferences) and dynamic traits (recent/evolving tastes). Call this when generating a new meal plan to get a holistic view of the user's palate, or when the user asks about their food profile.",
+      parameters: {
+        type: "object",
+        properties: {
+          context: {
+            type: "string",
+            description:
+              "Optional context to focus the profile. e.g. 'planning weeknight dinners', 'looking for healthy lunches'. When provided, also returns relevant search results.",
+          },
+        },
+        required: [],
       },
     },
   },

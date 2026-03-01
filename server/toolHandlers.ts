@@ -8,10 +8,33 @@
 
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import Supermemory from "supermemory";
 
 export function createToolHandlers(authToken: string) {
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
   convex.setAuth(authToken);
+
+  const supermemory = new Supermemory({
+    apiKey: process.env.SUPERMEMORY_API_KEY,
+  });
+
+  // Cache userId for the session to avoid repeated queries
+  let cachedUserId: string | null = null;
+  async function getUserId(): Promise<string> {
+    if (cachedUserId) return cachedUserId;
+    let prefs = await convex.query(api.preferences.get, {});
+    if (!prefs) {
+      await convex.mutation(api.preferences.createDefaults, {});
+      prefs = await convex.query(api.preferences.get, {});
+    }
+    if (!prefs?.userId) throw new Error("Could not resolve userId from auth");
+    cachedUserId = prefs.userId;
+    return cachedUserId;
+  }
+
+  function containerTag(userId: string): string {
+    return `aurelia-user-${userId}`;
+  }
 
   const handlers: Record<string, (args: any) => Promise<any>> = {
     // ═══════════════════════════════════════════
@@ -48,6 +71,33 @@ export function createToolHandlers(authToken: string) {
     },
 
     update_meal: async (args: any) => {
+      let ingredients = args.ingredients;
+
+      // For home-cooked meals: if ingredients missing and recipeId is numeric,
+      // fetch from Spoonacular as a safety net
+      if (!args.isTakeout && !ingredients && /^\d+$/.test(args.recipeId)) {
+        try {
+          const res = await fetch(
+            `https://api.spoonacular.com/recipes/${args.recipeId}/information?includeNutrition=false&apiKey=${process.env.SPOONACULAR_API_KEY}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            ingredients = data.extendedIngredients?.map((i: any) => ({
+              name: i.name,
+              amount: i.amount,
+              unit: i.unit,
+            })) || undefined;
+          }
+        } catch {
+          // Non-fatal: proceed without ingredients
+        }
+      }
+
+      // For takeout meals, clear ingredients
+      if (args.isTakeout) {
+        ingredients = undefined;
+      }
+
       return await convex.mutation(api.mealPlans.upsertMeal, {
         mealPlanId: args.mealPlanId,
         day: args.day,
@@ -60,8 +110,11 @@ export function createToolHandlers(authToken: string) {
         protein: args.protein,
         carbs: args.carbs,
         fat: args.fat,
-        ingredients: args.ingredients,
+        ingredients,
         isManualOverride: args.isManualOverride ?? false,
+        isTakeout: args.isTakeout,
+        takeoutService: args.takeoutService,
+        takeoutDetails: args.takeoutDetails,
       });
     },
 
@@ -172,6 +225,65 @@ export function createToolHandlers(authToken: string) {
     },
 
     // ═══════════════════════════════════════════
+    // MEMORY HANDLERS — SuperMemory
+    // ═══════════════════════════════════════════
+
+    store_memory: async (args: any) => {
+      const userId = await getUserId();
+      const result = await supermemory.add({
+        content: args.content,
+        containerTag: containerTag(userId),
+        metadata: {
+          category: args.category,
+          source: "conversation",
+        },
+      });
+      return {
+        id: result.id,
+        status: result.status,
+        message: `Memory stored: "${args.content}"`,
+      };
+    },
+
+    recall_memories: async (args: any) => {
+      const userId = await getUserId();
+      const result = await supermemory.search.memories({
+        q: args.query,
+        containerTag: containerTag(userId),
+        limit: args.limit || 10,
+      });
+      return {
+        memories: result.results.map((r) => ({
+          id: r.id,
+          content: r.memory || r.chunk || "",
+          similarity: r.similarity,
+          category: (r.metadata as any)?.category || "unknown",
+          updatedAt: r.updatedAt,
+        })),
+        total: result.total,
+        timing: result.timing,
+      };
+    },
+
+    get_taste_profile: async (args: any) => {
+      const userId = await getUserId();
+      const result = await supermemory.profile({
+        containerTag: containerTag(userId),
+        ...(args.context && { q: args.context }),
+      });
+      return {
+        staticTraits: result.profile.static,
+        dynamicTraits: result.profile.dynamic,
+        ...(result.searchResults && {
+          contextualResults: {
+            results: result.searchResults.results,
+            total: result.searchResults.total,
+          },
+        }),
+      };
+    },
+
+    // ═══════════════════════════════════════════
     // INTAKE FLOW
     // ═══════════════════════════════════════════
 
@@ -195,12 +307,38 @@ export function createToolHandlers(authToken: string) {
           deliveryAddress: args.deliveryAddress,
         }),
       });
-      // TODO: Trigger Browser Use agent here
-      return {
-        eventId,
-        status: "initiated",
-        message: "DoorDash order initiated. Browser Use agent integration pending.",
-      };
+
+      // Trigger Browser Use agent
+      try {
+        const doordashRes = await fetch(`${process.env.SITE_URL || "http://localhost:3005"}/api/doordash`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ searchIntent: args.recipeName }),
+        });
+        const doordashResult = await doordashRes.json();
+
+        // Log confirmed event
+        await convex.mutation(api.orderEvents.create, {
+          mealPlanId: args.mealPlanId,
+          plannedMealId: args.plannedMealId,
+          service: "doordash",
+          action: "confirmed",
+          details: JSON.stringify(doordashResult),
+        });
+
+        return {
+          eventId,
+          status: "confirmed",
+          message: `DoorDash order placed for "${args.recipeName}".`,
+          result: doordashResult,
+        };
+      } catch (error: any) {
+        return {
+          eventId,
+          status: "initiated",
+          message: `DoorDash order logged but Browser Use agent could not be reached: ${error.message}. You can retry later.`,
+        };
+      }
     },
 
     initiate_instacart_order: async (args: any) => {

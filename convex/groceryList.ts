@@ -18,6 +18,7 @@ export const generate = mutation({
     const ingredientMap = new Map<string, { amount: number; unit: string }>();
     for (const meal of meals) {
       if (meal.isSkipped) continue;
+      if (meal.isTakeout) continue;
       if (!meal.ingredients) continue;
       for (const ing of meal.ingredients) {
         const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;

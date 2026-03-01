@@ -92,12 +92,20 @@ export const upsertMeal = mutation({
       )
     ),
     isManualOverride: v.boolean(),
+    isTakeout: v.optional(v.boolean()),
+    takeoutService: v.optional(v.string()),
+    takeoutDetails: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const plan = await ctx.db.get(args.mealPlanId);
     if (!plan || plan.userId !== userId) throw new Error("Not authorized");
+
+    // When not takeout, clear takeout fields (handles takeout→recipe conversion)
+    const takeoutService = args.isTakeout ? args.takeoutService : undefined;
+    const takeoutDetails = args.isTakeout ? args.takeoutDetails : undefined;
+
     // Check if meal already exists for this slot
     const existing = await ctx.db
       .query("plannedMeals")
@@ -118,9 +126,12 @@ export const upsertMeal = mutation({
         protein: args.protein,
         carbs: args.carbs,
         fat: args.fat,
-        ingredients: args.ingredients,
+        ingredients: args.isTakeout ? undefined : args.ingredients,
         isManualOverride: args.isManualOverride,
         isSkipped: false,
+        isTakeout: args.isTakeout,
+        takeoutService,
+        takeoutDetails,
       });
       return { mealId: existing._id, updated: true };
     }
@@ -137,8 +148,11 @@ export const upsertMeal = mutation({
       protein: args.protein,
       carbs: args.carbs,
       fat: args.fat,
-      ingredients: args.ingredients,
+      ingredients: args.isTakeout ? undefined : args.ingredients,
       isManualOverride: args.isManualOverride,
+      isTakeout: args.isTakeout,
+      takeoutService,
+      takeoutDetails,
     });
     return { mealId: id, updated: false };
   },

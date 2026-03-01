@@ -54,6 +54,9 @@ const schema = defineSchema({
     ),
     isManualOverride: v.boolean(),
     isSkipped: v.optional(v.boolean()),
+    isTakeout: v.optional(v.boolean()),
+    takeoutService: v.optional(v.string()),
+    takeoutDetails: v.optional(v.string()),
   })
     .index("by_mealPlanId", ["mealPlanId"])
     .index("by_mealPlanId_day_mealType", ["mealPlanId", "day", "mealType"]),
