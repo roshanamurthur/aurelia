@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import Link from "next/link";
 import SignOutButton from "@/app/components/SignOutButton";
 import Chat from "@/app/components/Chat";
+import TakeoutOrderButton from "@/app/components/TakeoutOrderButton";
 import { useState } from "react";
 
 export default function MealPlanPage() {
@@ -48,6 +49,7 @@ export default function MealPlanPage() {
               </Link>
             </div>
             <div className="flex items-center gap-3">
+              <TakeoutOrderButton variant="button" />
               <Link
                 href="/"
                 className="px-4 py-2 rounded-xl text-sm font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 dark:text-stone-400 dark:hover:text-stone-200 dark:hover:bg-stone-800 transition-colors"
@@ -138,11 +140,7 @@ export default function MealPlanPage() {
                                   )}
                                 </>
                               ) : (
-                                <div className="flex-1 flex items-center justify-center">
-                                  <span className="text-xs text-stone-400 dark:text-stone-500 italic">
-                                    Empty
-                                  </span>
-                                </div>
+                                <TakeoutOrderButton variant="card" />
                               )}
                             </div>
                           );
