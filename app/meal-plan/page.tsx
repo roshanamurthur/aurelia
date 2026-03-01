@@ -7,6 +7,7 @@ import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
 import { getDefaultTimeForRestaurant } from "@/lib/sfRestaurants";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 
@@ -27,6 +28,27 @@ export default function MealPlanPage() {
     stablePlanRef.current = rawActivePlan;
   }
   const activePlan = rawActivePlan !== undefined ? rawActivePlan : stablePlanRef.current;
+
+  // Intake grace period: when arriving from ?from=intake, show a loading
+  // state for up to 8s instead of "No meal plan yet" to let Convex propagate.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const isFromIntake = searchParams.get("from") === "intake";
+  const [intakeGrace, setIntakeGrace] = useState(isFromIntake);
+
+  useEffect(() => {
+    if (!isFromIntake) return;
+    const timer = setTimeout(() => setIntakeGrace(false), 8000);
+    return () => clearTimeout(timer);
+  }, [isFromIntake]);
+
+  // Once activePlan arrives during grace period, clear the grace and clean URL
+  useEffect(() => {
+    if (intakeGrace && activePlan) {
+      setIntakeGrace(false);
+      router.replace("/meal-plan", { scroll: false });
+    }
+  }, [intakeGrace, activePlan, router]);
 
   // Prefer dedicated meals subscription (more granular reactivity),
   // fall back to activePlan.meals while liveMeals is still loading
@@ -103,11 +125,12 @@ export default function MealPlanPage() {
     const weekEnd = weekStart ? new Date(weekStart) : null;
     if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 6);
 
-    // Start from today OR the plan's weekStart, whichever is earlier.
-    // This ensures the full plan week is always visible even if today
-    // falls before the plan start (e.g. Sunday before a Monday plan).
+    // Show the plan's full Mon-Sun week whenever today falls within (or
+    // before) the plan range. This prevents the rolling window from
+    // overrunning the plan end and showing "Not planned" for days that
+    // have meals in the database.
     const windowStart =
-      weekStart && today < weekStart ? weekStart : today;
+      weekStart && weekEnd && today <= weekEnd ? weekStart : today;
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(windowStart);
@@ -905,6 +928,23 @@ export default function MealPlanPage() {
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
             {!activePlan ? (
+              intakeGrace ? (
+              <div className="text-center py-20">
+                <div className="flex justify-center mb-6">
+                  <div className="flex gap-1">
+                    <span className="w-2.5 h-2.5 bg-black animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2.5 h-2.5 bg-black animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2.5 h-2.5 bg-black animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+                <h2 className="font-display text-2xl font-semibold text-black mb-4">
+                  Setting up your meal plan...
+                </h2>
+                <p className="text-black/70 max-w-md mx-auto">
+                  Aurelia is putting everything together. This will only take a moment.
+                </p>
+              </div>
+              ) : (
               <div className="text-center py-20">
                 <h2 className="font-display text-2xl font-semibold text-black mb-4">
                   No meal plan yet
@@ -919,6 +959,7 @@ export default function MealPlanPage() {
                   Start planning
                 </Link>
               </div>
+              )
             ) : (
               <>
                 <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1133,39 +1174,7 @@ export default function MealPlanPage() {
                                   </div>
                                   )
                                 ) : (
-                                  <div className="flex items-start">
-                                    <TakeoutOrderButton
-                                      variant="card"
-                                      slotKey={`${dayName}-${mealType}`}
-                                      scheduleStatus={scheduleAllStatus[`${dateStr}-${planDayName}-${mealType}`]}
-                                      onClearScheduleError={() =>
-                                        setScheduleAllStatus((prev) => {
-                                          const next = { ...prev };
-                                          delete next[`${dateStr}-${planDayName}-${mealType}`];
-                                          return next;
-                                        })
-                                      }
-                                      onMealChange={
-                                        planDayName && activePlan?._id
-                                          ? async (mealName) => {
-                                              const slotKey = `${dateStr}-${planDayName}-${mealType}`;
-                                              setPendingTakeoutOverrides((prev) => ({ ...prev, [slotKey]: mealName }));
-                                              const cal = getTakeoutCalories(mealName);
-                                              await upsertMeal({
-                                                mealPlanId: activePlan._id,
-                                                day: planDayName,
-                                                mealType,
-                                                recipeId: "takeout-doordash",
-                                                recipeName: mealName,
-                                                isTakeout: true,
-                                                isManualOverride: true,
-                                                calories: cal ?? undefined,
-                                              });
-                                            }
-                                          : undefined
-                                      }
-                                    />
-                                  </div>
+                                  <p className="text-sm text-black/40 italic">Not planned</p>
                                 )}
                               </div>
                             );

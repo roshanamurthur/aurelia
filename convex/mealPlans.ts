@@ -168,22 +168,34 @@ export const upsertMeal = mutation({
       )
       .first();
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      // Use replace() instead of patch() — patch() strips undefined values,
+      // which leaves stale takeoutService/takeoutDetails/ingredients on the
+      // document when converting between takeout ↔ home-cooked.
+      // replace() removes any fields not present in the new object.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc: any = {
+        mealPlanId: args.mealPlanId,
+        userId,
+        day: args.day,
+        mealType: args.mealType,
         recipeId: args.recipeId,
         recipeName: args.recipeName,
-        recipeImageUrl: args.recipeImageUrl,
-        sourceUrl: args.sourceUrl,
-        calories: args.calories,
-        protein: args.protein,
-        carbs: args.carbs,
-        fat: args.fat,
-        ingredients: isTakeout ? undefined : args.ingredients,
         isManualOverride: args.isManualOverride,
         isSkipped: false,
         isTakeout,
-        takeoutService,
-        takeoutDetails,
-      });
+      };
+      if (args.recipeImageUrl !== undefined) doc.recipeImageUrl = args.recipeImageUrl;
+      if (args.sourceUrl !== undefined) doc.sourceUrl = args.sourceUrl;
+      if (args.calories !== undefined) doc.calories = args.calories;
+      if (args.protein !== undefined) doc.protein = args.protein;
+      if (args.carbs !== undefined) doc.carbs = args.carbs;
+      if (args.fat !== undefined) doc.fat = args.fat;
+      if (!isTakeout && args.ingredients) doc.ingredients = args.ingredients;
+      if (isTakeout) {
+        if (takeoutService) doc.takeoutService = takeoutService;
+        if (takeoutDetails) doc.takeoutDetails = takeoutDetails;
+      }
+      await ctx.db.replace(existing._id, doc);
       return { mealId: existing._id, updated: true };
     }
     const id = await ctx.db.insert("plannedMeals", {

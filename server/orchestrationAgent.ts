@@ -1,19 +1,22 @@
 // server/orchestrationAgent.ts
 //
-// THIS FILE IS A GENERIC LOOP. IT CONTAINS NO BUSINESS LOGIC.
-// It routes messages between the OpenAI API and the tool handlers.
+// Orchestration agent for ongoing meal plan changes.
+// Intake is handled by intakeAgent.ts — this agent only sees returning users.
 
-import OpenAI from "openai";
-import {
-    ChatCompletionMessageParam,
-    ChatCompletionToolMessageParam,
-} from "openai/resources/chat/completions";
-import { toolDefinitions } from "./toolDefinitions";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { runAgentLoop, AgentResult } from "./agentLoop";
+import { orchestrationToolDefinitions } from "./toolDefinitions";
 import { createToolHandlers } from "./toolHandlers";
 
-const openai = new OpenAI({
-  apiKey: process.env.AURELIA_LLM_API_KEY,
-});
+/** Returns the Monday of the current week as YYYY-MM-DD. */
+function getMonday(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun … 6=Sat
+  const diff = day === 0 ? -6 : 1 - day; // Monday offset
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  return monday.toISOString().split("T")[0];
+}
 
 const SYSTEM_PROMPT = `You are the Orchestration Agent for Aurelia, a meal planning application.
 
@@ -22,16 +25,16 @@ You manage two data layers:
 - PLAN LAYER: The concrete weekly meal plan with specific recipes in specific day/meal slots. Updated when assigning, swapping, or removing meals.
 
 RULES:
-1. GETTING THE PLAN: ALWAYS call get_active_plan FIRST before any meal modification. It returns the mealPlanId you need for update_meal, remove_meal, populate_meal_plan, etc. Do NOT try to compute weekStartDate manually — use get_active_plan instead. Only use create_meal_plan when you need to create a brand new plan.
+1. GETTING THE PLAN: ALWAYS call get_active_plan FIRST before answering any question about the plan OR making any meal modification. This is the ONLY way to see what meals exist — you have no other way to know the plan contents. It returns the mealPlanId and all meals. Do NOT try to compute weekStartDate manually — use get_active_plan instead. Only use create_meal_plan when you need to create a brand new plan.
 2. When a user requests a change, determine if it is a persistent preference update or a one-time plan edit.
 3. For preference updates: call update_preferences first, then re-evaluate affected meals in the current plan. Skip meals where isManualOverride is true.
 4. For one-time plan edits: modify the plan directly. Do NOT update preferences.
 5. INGREDIENT PERSISTENCE: When calling update_meal for home-cooked meals, ALWAYS include the complete ingredients array from search_recipes or get_recipe_details. If search_recipes didn't return ingredients, call get_recipe_details first. Meals without ingredients produce empty grocery lists.
-6. When populating OR regenerating a full weekly plan: get preferences, create/get the plan, then call populate_meal_plan ONCE with the dietary constraints and the existing mealPlanId. Pass takeoutDays and takeoutSlots from get_preferences if present. Do NOT call search_recipes + update_meal individually for each slot — that is slow. Only use search_recipes + update_meal for individual meal swaps after the plan exists. If populate_meal_plan returns success: false, tell the user what went wrong (API error, no results, etc.).
+6. When populating OR regenerating a full weekly plan: get preferences, create/get the plan, then call populate_meal_plan ONCE with the dietary constraints and the existing mealPlanId. If the user has takeout/dineout preferences stored, populate_meal_plan will auto-read them from preferences — you only need to pass takeoutDays/takeoutSlots/dineoutDays/dineoutSlots explicitly if the user is specifying NEW takeout/dineout in this message. Do NOT call search_recipes + update_meal individually for each slot — that is slow. Only use search_recipes + update_meal for individual meal swaps after the plan exists. If populate_meal_plan returns success: false, tell the user what went wrong (API error, no results, etc.).
 7. Before initiating any order (DoorDash, Instacart, OpenTable), confirm the details with the user.
 8. After modifying multiple meals or the full plan, offer to regenerate the grocery list. Do not offer after every single meal swap.
-9. TAKEOUT HANDLING: ALWAYS ask the user which specific meals they want takeout for (breakfast, lunch, dinner). Never assume all meals. Store takeoutDays AND takeoutSlots in preferences. When populating, pass takeoutSlots — if user said "takeout on Fridays" without specifying meals, default to dinner only: takeoutSlots: ["dinner"]. Call get_sf_meals first for exact meal names, then update_meal with isTakeout=true, recipeId="takeout-doordash", takeoutService="doordash", recipeName from get_sf_meals.
-9b. DINE-OUT HANDLING: Call get_sf_restaurants to get the list of SF restaurants for OpenTable. Use these EXACT names when available. When user says "dine out on Saturdays", pass dineoutDays: ["saturday"], dineoutSlots: ["dinner"] (default). For single-slot change, call get_sf_restaurants first, then update_meal with takeoutService="opentable", recipeName from get_sf_restaurants. If the user specifies a restaurant NOT in the curated list (e.g. "Casa Lupe"), use their exact restaurant name — it does not need to be from the curated list.
+9. TAKEOUT HANDLING: When the user asks to change a specific slot to takeout AFTER the plan exists, ask which meal (breakfast, lunch, dinner) if not specified. Never assume all meals on a day are takeout. Store takeoutDays AND takeoutSlots in preferences. When populating, pass takeoutSlots — if user said "takeout on Fridays" without specifying meals, default to dinner only: takeoutSlots: ["dinner"]. For individual slot changes, call get_sf_meals first for exact meal names, then update_meal with isTakeout=true, recipeId="takeout-doordash", takeoutService="doordash", recipeName from get_sf_meals.
+9b. DINE-OUT HANDLING: For individual slot changes after the plan exists, call get_sf_restaurants to get the list of SF restaurants for OpenTable. Use these EXACT names when available. When user says "dine out on Saturdays", pass dineoutDays: ["saturday"], dineoutSlots: ["dinner"] (default). For single-slot change, call get_sf_restaurants first, then update_meal with takeoutService="opentable", recipeName from get_sf_restaurants. If the user specifies a restaurant NOT in the curated list (e.g. "Casa Lupe"), use their exact restaurant name — it does not need to be from the curated list.
 10. MIXED MEAL TYPES: Plans can contain a mix of home-cooked meals, takeout/delivery, restaurant reservations, and skipped slots. The grocery list automatically excludes takeout and skipped meals.
 19. ORDERING FLOWS — When a user wants to place an order or make a reservation through Aurelia:
 
@@ -60,10 +63,12 @@ RULES:
        6. Report the result to the user.
 
     IMPORTANT: The user can trigger any ordering flow with natural language like "Order DoorDash", "Make a reservation", "Get groceries delivered", "I want takeout tonight", etc. Always follow the full flow above — update the meal slot FIRST, then confirm, then initiate the order.
-11. TYPE CONVERSION: To convert a takeout slot back to home-cooked, call update_meal with isTakeout omitted/false, a valid Spoonacular recipeId, and the full ingredients array. The takeout fields will be cleared automatically.
+11. TYPE CONVERSION (takeout → home-cooked): When the user wants to replace a DoorDash/takeout meal with a home-cooked one:
+    a) Call search_recipes with dietary constraints and a query matching what the user wants (or a general query like "dinner" if unspecified).
+    b) Pick a recipe from the results. If it lacks ingredients, call get_recipe_details to fetch them.
+    c) Call update_meal with: the Spoonacular recipeId (numeric), recipeName, the full ingredients array, isTakeout=false, isManualOverride=true. Do NOT pass takeoutService or takeoutDetails — they will be cleared automatically.
 12. RESPONSE FORMAT: Keep responses short and conversational — like texting a friend, not writing documentation. After updating a meal, just confirm what changed in one sentence (e.g. "Done, Monday breakfast is now Farmer's Strata with Kale and Tomatoes."). Do NOT include markdown formatting (no bold, headers, bullets, or images), nutrition breakdowns, ingredient lists, image URLs, or recipe details unless the user explicitly asks for that information. Never regurgitate raw tool output. If the user hasn't set preferences yet, guide them through setting up their dietary preferences before generating a plan.
-13. Today's date is ${new Date().toISOString().split("T")[0]}. When you need the current plan, call get_active_plan — do NOT try to compute weekStartDate from the date. Only compute weekStartDate if the user explicitly asks for a DIFFERENT week's plan.
-14. After generating a complete initial meal plan with all requested meal slots filled, call intake_complete. Only call this once during first plan generation, not for ongoing modifications.
+13. Today's date is ${new Date().toISOString().split("T")[0]}. The Monday of the current week is ${getMonday()}. When you need the current plan, call get_active_plan — do NOT try to compute weekStartDate from the date. Only compute weekStartDate if the user explicitly asks for a DIFFERENT week's plan.
 15. VARIETY: populate_meal_plan handles deduplication automatically — it will never assign the same recipe twice. For single-meal swaps via update_meal, the server will warn if a recipe already exists in another slot but will still allow the write. By default, suggest a different recipe to avoid duplicates. But if the user explicitly wants the same meal in multiple slots, honor their request.
 16. LONG-TERM MEMORY. You have access to a persistent memory system that remembers the user across sessions:
     - Call store_memory whenever the user reveals a taste pattern, cooking habit, texture preference, cuisine opinion, or meal feedback. Be proactive — if they say "this salmon was amazing", store it.
@@ -88,105 +93,16 @@ export async function handleUserMessage(
   authToken: string,
   userMessage: string,
   conversationHistory: ChatCompletionMessageParam[]
-): Promise<{
-  reply: string;
-  conversationHistory: ChatCompletionMessageParam[];
-  action?: { type: "navigate"; to: string };
-}> {
+): Promise<AgentResult> {
   const toolHandlers = createToolHandlers(authToken);
 
   conversationHistory.push({ role: "user", content: userMessage });
 
-  const MAX_ITERATIONS = 20;
-  let iteration = 0;
-  while (true) {
-    if (++iteration > MAX_ITERATIONS) {
-      return {
-        reply: "I hit a processing limit. Could you try rephrasing your request?",
-        conversationHistory,
-      };
-    }
-    // Step 1: Send conversation + tool definitions to the LLM
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 4096,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...conversationHistory,
-      ],
-      tools: toolDefinitions,
-      tool_choice: "auto",
-    });
-
-    const message = response.choices[0].message;
-
-    // Trace: log what the LLM decided to do
-    if (message.tool_calls?.length) {
-      console.log(`[orchestrator] iter=${iteration} tool_calls=[${message.tool_calls.map((tc: any) => tc.function?.name).join(", ")}]`);
-    } else {
-      console.log(`[orchestrator] iter=${iteration} text_reply (${(message.content || "").length} chars)`);
-    }
-
-    // Step 2: Add assistant response to history
-    conversationHistory.push(message);
-
-    // Step 3: Check if the LLM wants to call tools
-    if (!message.tool_calls || message.tool_calls.length === 0) {
-      // No tool calls — LLM responded with text, return to user
-      // Scan history for intake_complete to trigger navigation
-      const intakeCalled = conversationHistory.some(
-        (msg) =>
-          msg.role === "assistant" &&
-          Array.isArray((msg as any).tool_calls) &&
-          (msg as any).tool_calls.some(
-            (tc: any) => tc.function?.name === "intake_complete"
-          )
-      );
-
-      return {
-        reply: message.content || "",
-        conversationHistory,
-        ...(intakeCalled && { action: { type: "navigate" as const, to: "/meal-plan" } }),
-      };
-    }
-
-    // Step 4: Tool calls found — execute all in parallel
-    const toolResults: ChatCompletionToolMessageParam[] = await Promise.all(
-      message.tool_calls
-        .filter((tc) => tc.type === "function")
-        .map(async (toolCall) => {
-          const handler = toolHandlers[toolCall.function.name];
-          if (!handler) {
-            return {
-              role: "tool" as const,
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` }),
-            };
-          }
-          try {
-            const args = JSON.parse(toolCall.function.arguments);
-            console.log(`[orchestrator] → ${toolCall.function.name}(${JSON.stringify(args).slice(0, 200)})`);
-            const result = await handler(args);
-            console.log(`[orchestrator] ← ${toolCall.function.name} ok`);
-            return {
-              role: "tool" as const,
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(result),
-            };
-          } catch (error: any) {
-            console.error(`[orchestrator] ← ${toolCall.function.name} ERROR: ${error.message}`);
-            return {
-              role: "tool" as const,
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: error.message }),
-            };
-          }
-        })
-    );
-
-    // Step 5: Feed tool results back to LLM and loop
-    conversationHistory.push(...toolResults);
-    // The loop continues — the LLM sees the results and decides
-    // whether to call another tool or respond with text
-  }
+  return runAgentLoop({
+    systemPrompt: SYSTEM_PROMPT,
+    tools: orchestrationToolDefinitions,
+    toolHandlers,
+    conversationHistory,
+    label: "orchestrator",
+  });
 }

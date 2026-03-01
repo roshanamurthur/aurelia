@@ -4,8 +4,11 @@
 // Auth token is extracted from cookies via Convex Auth's Next.js integration.
 
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
+import { handleIntakeMessage } from "../../../server/intakeAgent";
 import { handleUserMessage } from "../../../server/orchestrationAgent";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+
+export const maxDuration = 120;
 
 interface Session {
   history: ChatCompletionMessageParam[];
@@ -60,21 +63,20 @@ export async function POST(req: Request) {
   const history = session?.history || [];
 
   try {
-    const { reply, conversationHistory, action } = await handleUserMessage(
-      token,
-      message,
-      history
-    );
+    const isFirstMessage = history.length === 0;
+    const result = isFirstMessage
+      ? await handleIntakeMessage(token, message)
+      : await handleUserMessage(token, message, history);
 
     // Save updated history with timestamp
     sessions.set(sessionKey, {
-      history: conversationHistory,
+      history: result.conversationHistory,
       lastAccess: Date.now(),
     });
 
     return Response.json({
-      reply,
-      ...(action && { navigateTo: action.to }),
+      reply: result.reply,
+      ...(result.action && { navigateTo: result.action.to }),
     });
   } catch (error: any) {
     console.error("Orchestration agent error:", error);

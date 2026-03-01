@@ -325,28 +325,34 @@ export function createToolHandlers(authToken: string) {
         };
       }
 
-      // Group recipes by meal type, deduplicate
+      // Group recipes by meal type — deduplicate within each pool, not across types.
+      // This prevents lunch (also "main course") from starving the dinner pool.
       const excludeSet = new Set(excludeRecipeIds as string[]);
-      const usedIds = new Set<string>();
       const recipesByType: Record<string, any[]> = {};
+      const seenByType: Record<string, Set<string>> = {};
 
       for (const slot of uniqueSlots) {
         recipesByType[slot] = [];
+        seenByType[slot] = new Set();
       }
 
       for (const batch of searchResults) {
         for (const recipe of batch) {
-          if (excludeSet.has(recipe.id) || usedIds.has(recipe.id)) continue;
-          if (recipesByType[recipe.mealType]) {
-            recipesByType[recipe.mealType].push(recipe);
-            usedIds.add(recipe.id);
+          if (excludeSet.has(recipe.id)) continue;
+          const pool = recipesByType[recipe.mealType];
+          const seen = seenByType[recipe.mealType];
+          if (pool && seen && !seen.has(recipe.id)) {
+            pool.push(recipe);
+            seen.add(recipe.id);
           }
         }
       }
 
       // Assign recipes to slots (skip takeout slots — filled separately)
+      // Cross-type dedup at assignment time: no recipe appears twice in the final plan
       const meals: any[] = [];
       const typeIndex: Record<string, number> = {};
+      const assignedIds = new Set<string>();
       for (const slot of uniqueSlots) {
         typeIndex[slot] = 0;
       }
@@ -381,11 +387,16 @@ export function createToolHandlers(authToken: string) {
           }
 
           const pool = recipesByType[slot] || [];
-          const idx = typeIndex[slot] || 0;
+          let idx = typeIndex[slot] || 0;
+          // Skip recipes already assigned to another slot type
+          while (idx < pool.length && assignedIds.has(pool[idx].id)) {
+            idx++;
+          }
           if (idx >= pool.length) continue; // No more unique recipes available
 
           const recipe = pool[idx];
           typeIndex[slot] = idx + 1;
+          assignedIds.add(recipe.id);
 
           meals.push({
             day,

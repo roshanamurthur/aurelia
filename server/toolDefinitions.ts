@@ -6,7 +6,7 @@
 
 import { ChatCompletionTool } from "openai/resources/chat/completions";
 
-export const toolDefinitions: ChatCompletionTool[] = [
+const allToolDefinitions: ChatCompletionTool[] = [
   // ═══════════════════════════════════════════
   // PREFERENCE LAYER TOOLS
   // ═══════════════════════════════════════════
@@ -111,7 +111,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "get_active_plan",
       description:
-        "Returns the user's currently active meal plan with all meals, or null if none exists. Use this FIRST before any meal modification — it gives you the mealPlanId needed for update_meal, remove_meal, etc. No date arithmetic required. This is the primary way to look up the current plan.",
+        "Returns the user's currently active meal plan with all meals, or null if none exists. Use this FIRST before answering any question about the plan OR making any meal modification. This is the ONLY way to see what meals are in the plan — always call it when the user asks about their meals, a specific day, or nutrition. No date arithmetic required.",
       parameters: {
         type: "object",
         properties: {},
@@ -652,3 +652,28 @@ export const toolDefinitions: ChatCompletionTool[] = [
     },
   },
 ];
+
+// ═══════════════════════════════════════════
+// FILTERED SUBSETS — one master list, filtered exports
+// ═══════════════════════════════════════════
+
+const INTAKE_TOOL_NAMES = new Set([
+  "update_preferences",
+  "create_meal_plan",
+  "populate_meal_plan",
+  "intake_complete",
+  "get_preferences",
+]);
+
+/** 5 tools for the intake agent — focused first-message flow. */
+export const intakeToolDefinitions = allToolDefinitions.filter(
+  (t) => t.type === "function" && INTAKE_TOOL_NAMES.has(t.function.name)
+);
+
+/** All tools except intake_complete — for the orchestration agent. */
+export const orchestrationToolDefinitions = allToolDefinitions.filter(
+  (t) => t.type === "function" && t.function.name !== "intake_complete"
+);
+
+/** Backward-compatible default export of all tools. */
+export const toolDefinitions = allToolDefinitions;

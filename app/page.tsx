@@ -130,13 +130,17 @@ export default function Home() {
     );
   }
 
-  const handleLandingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const startIntake = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setInitialMessage(trimmed);
     setConversationStarted(true);
     setText("");
+  };
+
+  const handleLandingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    startIntake();
   };
 
   return (
@@ -190,15 +194,22 @@ export default function Home() {
                 transition={{ type: "spring", stiffness: 80, damping: 18, delay: 0.45 }}
                 className="w-full"
               >
-                <Link
-                  href="/meal-plan"
-                  className="relative block border-2 border-black overflow-hidden group"
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (text.trim()) {
+                      startIntake();
+                    } else {
+                      router.push("/meal-plan");
+                    }
+                  }}
+                  className="relative block w-full border-2 border-black overflow-hidden group cursor-pointer"
                 >
                   <div className="absolute inset-0 bg-black -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]" />
                   <span className="relative block py-4 px-6 font-semibold text-center text-black group-hover:text-white transition-colors duration-200 delay-75">
                     View your meal plan
                   </span>
-                </Link>
+                </button>
               </motion.div>
               {/* Auth link — subtle underlined text */}
               <motion.div

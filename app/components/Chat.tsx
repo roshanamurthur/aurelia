@@ -69,7 +69,10 @@ const Chat = forwardRef<ChatHandle, ChatProps>(function Chat(
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
 
       if (data.navigateTo && onNavigate) {
-        setTimeout(() => onNavigate(data.navigateTo), 1500);
+        const dest = data.navigateTo === "/meal-plan"
+          ? "/meal-plan?from=intake"
+          : data.navigateTo;
+        setTimeout(() => onNavigate(dest), 2500);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
