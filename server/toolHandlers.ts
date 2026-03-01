@@ -10,6 +10,7 @@ import { ConvexHttpClient } from "convex/browser";
 import Supermemory from "supermemory";
 import { api } from "../convex/_generated/api";
 import { SF_MEALS, pickTakeoutMealForSlot } from "./sfMeals";
+import { pickRestaurantForSlot } from "./sfRestaurants";
 
 export function createToolHandlers(authToken: string) {
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -173,9 +174,13 @@ export function createToolHandlers(authToken: string) {
       const mealSlots = (args.mealSlots as string[]).map((s: string) => s.toLowerCase());
       const excludeRecipeIds = args.excludeRecipeIds || [];
       const takeoutDays = ((args.takeoutDays as string[]) || []).map((d: string) => d.toLowerCase());
-      const takeoutSlots = ((args.takeoutSlots as string[]) || ["lunch", "dinner"]).map((s: string) => s.toLowerCase());
+      const takeoutSlots = ((args.takeoutSlots as string[]) || ["dinner"]).map((s: string) => s.toLowerCase());
+      const dineoutDays = ((args.dineoutDays as string[]) || []).map((d: string) => d.toLowerCase());
+      const dineoutSlots = ((args.dineoutSlots as string[]) || ["dinner"]).map((s: string) => s.toLowerCase());
       const isTakeoutSlot = (day: string, slot: string) =>
         takeoutDays.includes(day) && takeoutSlots.includes(slot);
+      const isDineoutSlot = (day: string, slot: string) =>
+        dineoutDays.includes(day) && dineoutSlots.includes(slot);
 
       // Guard: Spoonacular API key must exist
       const spoonKey = process.env.SPOONACULAR_API_KEY;
@@ -292,6 +297,19 @@ export function createToolHandlers(authToken: string) {
 
       for (const day of days) {
         for (const slot of mealSlots) {
+          if (isDineoutSlot(day, slot)) {
+            const restaurant = pickRestaurantForSlot(day, slot);
+            meals.push({
+              day,
+              mealType: slot,
+              recipeId: "dineout-opentable",
+              recipeName: restaurant.name,
+              isTakeout: true,
+              takeoutService: "opentable",
+              takeoutDetails: restaurant.defaultTime,
+            });
+            continue;
+          }
           if (isTakeoutSlot(day, slot)) {
             const takeout = pickTakeoutMealForSlot(day, slot);
             meals.push({
@@ -403,6 +421,10 @@ export function createToolHandlers(authToken: string) {
 
     get_sf_meals: async () => {
       return { meals: SF_MEALS.map((m) => m.name) };
+    },
+
+    get_sf_restaurants: async () => {
+      return { restaurants: SF_RESTAURANTS.map((r) => r.name) };
     },
 
     search_recipes: async (args: any) => {
@@ -739,12 +761,52 @@ export function createToolHandlers(authToken: string) {
           partySize: args.partySize,
         }),
       });
-      // TODO: Trigger Browser Use agent here
-      return {
-        eventId,
-        status: "initiated",
-        message: "OpenTable reservation initiated. Browser Use agent integration pending.",
-      };
+
+      try {
+        const opentableRes = await fetch(
+          `${process.env.SITE_URL || "http://localhost:3005"}/api/opentable`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              restaurantName: args.cuisine,
+              location: args.location || "San Francisco",
+              date: args.date,
+              time: args.time || "19:00",
+              partySize: args.partySize ?? 2,
+            }),
+          }
+        );
+        const opentableResult = await opentableRes.json();
+
+        if (!opentableRes.ok) {
+          return {
+            eventId,
+            status: "initiated",
+            message: `OpenTable agent failed: ${opentableResult.error || opentableResult.details || opentableRes.statusText}. Log into OpenTable in Chrome and sync your profile.`,
+          };
+        }
+
+        await convex.mutation(api.orderEvents.create, {
+          mealPlanId: args.mealPlanId,
+          service: "opentable",
+          action: "confirmed",
+          details: JSON.stringify(opentableResult),
+        });
+
+        return {
+          eventId,
+          status: "confirmed",
+          message: `OpenTable reservation confirmed. ${opentableResult.output || ""}`,
+          result: opentableResult,
+        };
+      } catch (error: any) {
+        return {
+          eventId,
+          status: "initiated",
+          message: `OpenTable reservation logged but Browser Use agent could not be reached: ${error.message}. You can retry from the meal plan.`,
+        };
+      }
     },
   };
 

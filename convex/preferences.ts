@@ -45,6 +45,27 @@ export const createDefaults = mutation({
   },
 });
 
+/** Clear takeout/dine-out preferences for a user by email. Run: npx convex run preferences:clearTakeoutForEmail '{"email":"user@example.com"}' */
+export const clearTakeoutForEmail = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const users = await ctx.db.query("users").collect();
+    const emailLower = args.email.toLowerCase().trim();
+    const user = users.find((u) => {
+      const e = (u as { email?: string }).email;
+      return e && e.toLowerCase().trim() === emailLower;
+    });
+    if (!user) throw new Error(`User not found: ${args.email}`);
+    const prefs = await ctx.db
+      .query("preferences")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .unique();
+    if (!prefs) return { success: true, message: "No preferences found" };
+    await ctx.db.patch(prefs._id, { takeoutDays: [], takeoutSlots: [] });
+    return { success: true, message: "Cleared takeoutDays and takeoutSlots" };
+  },
+});
+
 export const update = mutation({
   args: {
     dietaryRestrictions: v.optional(v.array(v.string())),
@@ -61,6 +82,7 @@ export const update = mutation({
     preferredOrderMethod: v.optional(v.string()),
     deliveryAddress: v.optional(v.string()),
     takeoutDays: v.optional(v.array(v.string())),
+    takeoutSlots: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);

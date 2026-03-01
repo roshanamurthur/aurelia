@@ -1,9 +1,11 @@
 "use client";
 
 import Chat from "@/app/components/Chat";
+import DineOutReservationButton from "@/app/components/DineOutReservationButton";
 import SignOutButton from "@/app/components/SignOutButton";
 import TakeoutOrderButton from "@/app/components/TakeoutOrderButton";
 import { getCaloriesForSlot, getTakeoutCalories } from "@/lib/sfMeals";
+import { getDefaultTimeForRestaurant, SF_RESTAURANTS } from "@/lib/sfRestaurants";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -49,6 +51,7 @@ export default function MealPlanPage() {
     >
   >({});
   const [scheduleToast, setScheduleToast] = useState<{ success: number; failed: number } | null>(null);
+  const [addingDineOut, setAddingDineOut] = useState(false);
 
   useEffect(() => {
     setSelectedGroceryIndices(new Set());
@@ -165,8 +168,14 @@ export default function MealPlanPage() {
     setFridgeItems((prev) => prev.filter((i) => i.id !== id));
   };
 
-  // Collect takeout meals from the rolling window for Schedule All
-  type TakeoutSlot = { slotKey: string; recipeName: string };
+  // Collect takeout/dine-out meals from the rolling window for Schedule All
+  type TakeoutSlot = {
+    slotKey: string;
+    recipeName: string;
+    service: "doordash" | "opentable";
+    dateStr?: string;
+    defaultTime?: string;
+  };
   const getTakeoutMealsForSchedule = (): TakeoutSlot[] => {
     if (!activePlan?.meals) return [];
     const items: TakeoutSlot[] = [];
@@ -176,9 +185,12 @@ export default function MealPlanPage() {
       for (const mealType of mealTypes) {
         const meal = getMeal(planDayName, mealType);
         if (meal?.isTakeout) {
+          const service = (meal.takeoutService === "opentable" ? "opentable" : "doordash") as "doordash" | "opentable";
           items.push({
             slotKey: `${dateStr}-${planDayName}-${mealType}`,
             recipeName: meal.recipeName,
+            service,
+            ...(service === "opentable" && { dateStr, defaultTime: meal.takeoutDetails ?? "19:00" }),
           });
         }
       }
@@ -230,8 +242,100 @@ export default function MealPlanPage() {
     };
 
     const results = await Promise.all(
-      items.map(async ({ slotKey, recipeName }): Promise<"success" | "error"> => {
+      items.map(async ({ slotKey, recipeName, service, dateStr: slotDateStr, defaultTime: slotDefaultTime }): Promise<"success" | "error"> => {
         try {
+          if (service === "opentable") {
+            const res = await fetch("/api/opentable", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                restaurantName: recipeName,
+                location: "San Francisco",
+                date: slotDateStr ?? "",
+                time: slotDefaultTime ?? "19:00",
+                partySize: 2,
+                stream: true,
+              }),
+            });
+            const contentType = res.headers.get("content-type") ?? "";
+            if (contentType.includes("text/event-stream")) {
+              const reader = res.body?.getReader();
+              const decoder = new TextDecoder();
+              if (!reader) throw new Error("No response body");
+              let buffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n\n");
+                buffer = lines.pop() ?? "";
+                for (const line of lines) {
+                  if (!line.startsWith("data: ")) continue;
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.type === "step") {
+                      setScheduleAllStatus((prev) => ({
+                        ...prev,
+                        [slotKey]: {
+                          ...prev[slotKey],
+                          status: "ordering",
+                          progressMessage: data.message ?? "Making reservation...",
+                        },
+                      }));
+                    } else if (data.type === "done") {
+                      setScheduleAllStatus((prev) => ({
+                        ...prev,
+                        [slotKey]: {
+                          status: "success",
+                          liveUrl: data.liveUrl,
+                          scheduledFor: getScheduledFor(),
+                        },
+                      }));
+                      return "success";
+                    } else if (data.type === "error") {
+                      setScheduleAllStatus((prev) => ({
+                        ...prev,
+                        [slotKey]: {
+                          status: "error",
+                          error: data.error ?? data.output ?? "Reservation failed",
+                        },
+                      }));
+                      return "error";
+                    }
+                  } catch (e) {
+                    if (e instanceof SyntaxError) continue;
+                    throw e;
+                  }
+                }
+              }
+              setScheduleAllStatus((prev) => ({
+                ...prev,
+                [slotKey]: { status: "error", error: "Connection interrupted" },
+              }));
+              return "error";
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false) {
+              setScheduleAllStatus((prev) => ({
+                ...prev,
+                [slotKey]: {
+                  status: "error",
+                  error: data?.error ?? data?.output ?? data?.details ?? `HTTP ${res.status}`,
+                },
+              }));
+              return "error";
+            }
+            setScheduleAllStatus((prev) => ({
+              ...prev,
+              [slotKey]: {
+                status: "success",
+                liveUrl: data.liveUrl,
+                scheduledFor: getScheduledFor(),
+              },
+            }));
+            return "success";
+          }
+
           const res = await fetch("/api/doordash", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -319,6 +423,37 @@ export default function MealPlanPage() {
     const failed = results.filter((r) => r === "error").length;
     setScheduleToast({ success, failed });
     setTimeout(() => setScheduleToast(null), 5000);
+  };
+
+  const handleAddTestDineOutSlots = async () => {
+    if (!activePlan?._id) return;
+    setAddingDineOut(true);
+    try {
+      await upsertMeal({
+        mealPlanId: activePlan._id,
+        day: "friday",
+        mealType: "dinner",
+        recipeId: "dineout-opentable",
+        recipeName: SF_RESTAURANTS[0]!.name,
+        isTakeout: true,
+        takeoutService: "opentable",
+        takeoutDetails: "19:00",
+        isManualOverride: true,
+      });
+      await upsertMeal({
+        mealPlanId: activePlan._id,
+        day: "saturday",
+        mealType: "dinner",
+        recipeId: "dineout-opentable",
+        recipeName: SF_RESTAURANTS[1]!.name,
+        isTakeout: true,
+        takeoutService: "opentable",
+        takeoutDetails: "19:00",
+        isManualOverride: true,
+      });
+    } finally {
+      setAddingDineOut(false);
+    }
   };
 
   // Maps ingredient labels → Spoonacular CDN slugs. Source: https://img.spoonacular.com/ingredients_100x100/{slug}.jpg
@@ -535,12 +670,13 @@ export default function MealPlanPage() {
     return emoji ?? label.charAt(0).toUpperCase();
   };
 
-  // Client-side synonym map for grocery list deduplication
+  // Client-side synonym map for grocery list deduplication (keys must be lowercase for lookup)
   const GROCERY_SYNONYMS: Record<string, string> = {
     // Cheese — any type → cheese
     cheddar: "cheese",
     "cheddar cheese": "cheese",
-    "Mexican cheese": "cheese",
+    "mexican cheese": "cheese",
+    "queso": "cheese",
     mozzarella: "cheese",
     "mozzarella cheese": "cheese",
     parmesan: "cheese",
@@ -559,7 +695,18 @@ export default function MealPlanPage() {
     "cottage cheese": "cheese",
     "goat cheese": "cheese",
     "blue cheese": "cheese",
-    "provolone": "cheese",
+    provolone: "cheese",
+    "shredded cheddar": "cheese",
+    "shredded cheese": "cheese",
+    "cheddar shredded": "cheese",
+    "mozzarella shredded": "cheese",
+    "colby": "cheese",
+    "monterey": "cheese",
+    "brie": "cheese",
+    "gruyere": "cheese",
+    "asiago": "cheese",
+    "havarti": "cheese",
+    "mascarpone": "cheese",
     "pepper flakes": "pepper",
     "red pepper flakes": "pepper",
     "crushed red pepper": "pepper",
@@ -572,6 +719,7 @@ export default function MealPlanPage() {
     "coarse salt": "salt",
     "flat leaf parsley": "parsley",
     "flat-leaf parsley": "parsley",
+    "leaf parsley": "parsley",
     "italian parsley": "parsley",
     "curly parsley": "parsley",
     "light soy sauce": "soy sauce",
@@ -591,6 +739,17 @@ export default function MealPlanPage() {
     "cherry tomato": "tomato",
     "cherry tomatoes": "tomato",
     tomatoes: "tomato",
+    tomato: "tomato",
+    "roma tomatoes": "tomato",
+    "roma tomato": "tomato",
+    "grape tomatoes": "tomato",
+    "grape tomato": "tomato",
+    "plum tomatoes": "tomato",
+    "plum tomato": "tomato",
+    "heirloom tomatoes": "tomato",
+    "heirloom tomato": "tomato",
+    "campari tomatoes": "tomato",
+    "beefsteak tomatoes": "tomato",
     // Beans — any type → beans
     "black beans": "beans",
     "black bean": "beans",
@@ -618,16 +777,63 @@ export default function MealPlanPage() {
 
   const toSingular = (word: string): string => {
     const w = word.toLowerCase();
-    if (["beans", "cheese", "cream"].includes(w)) return w; // Keep category names as-is
+    if (["beans", "cheese", "cream", "tomato"].includes(w)) return w; // Keep category names as-is
     if (w.endsWith("ies") && w.length > 4) return w.slice(0, -3) + "y";
     if (w.endsWith("es") && !w.endsWith("ss") && w.length > 3) return w.slice(0, -2);
     if (w.endsWith("s") && !w.endsWith("ss") && w.length > 2) return w.slice(0, -1);
     return w;
   };
 
+  // Adjectives/modifiers to strip from any ingredient — "fresh parsley" → "parsley", "dried oregano" → "oregano"
+  const INGREDIENT_ADJECTIVES = new Set([
+    "fresh", "dried", "organic", "raw", "cooked", "frozen", "canned", "bottled", "jarred",
+    "minced", "chopped", "sliced", "diced", "grated", "crushed", "ground", "whole",
+    "large", "small", "medium", "extra", "optional", "roughly", "finely", "coarsely",
+    "low", "reduced", "unsalted", "salted", "plain", "unflavored", "natural", "pure",
+    "smoked", "roasted", "toasted", "flat", "curly",
+    "baby", "young", "mature", "aged", "wild", "farmed", "imported", "domestic", "local", "premium",
+    "virgin", "light", "dark", "red", "yellow", "white", "green", "black", "brown", "golden",
+    "italian", "spanish", "greek", "french", "dutch", "english", "asian",
+    "all-purpose", "self-rising",
+    "hot", "mild", "sweet", "sour", "bitter", "spicy",
+    "thick", "thin", "soft", "hard", "sharp", "mild",
+    "pressed", "squeezed", "peeled", "unpeeled", "seeded", "seedless",
+    "skinless", "boneless", "bone-in", "trimmed", "untreated",
+  ]);
+
+  const stripAdjectives = (text: string): string => {
+    const words = text.toLowerCase().trim().replace(/\s+/g, " ").split(/\s+/);
+    const filtered = words.filter((w) => !INGREDIENT_ADJECTIVES.has(w)) as string[];
+    return filtered.join(" ").trim() || text;
+  };
+
+  const CHEESE_WORDS = new Set([
+    "cheese", "cheddar", "mozzarella", "parmesan", "feta", "gouda", "ricotta", "brie", "gruyere",
+    "asiago", "havarti", "mascarpone", "provolone", "colby", "monterey", "queso", "swiss",
+  ]);
+  const BEAN_WORDS = new Set([
+    "beans", "bean", "kidney", "pinto", "navy", "cannellini", "garbanzo", "chickpea",
+    "chickpeas", "lima", "fava", "refried",
+  ]);
+
   const getGroceryCanonicalKey = (name: string) => {
     const normalized = name.toLowerCase().trim().replace(/\s+/g, " ");
-    const withSynonym = GROCERY_SYNONYMS[normalized] ?? normalized;
+    const stripped = stripAdjectives(normalized);
+    let withSynonym = GROCERY_SYNONYMS[stripped] ?? GROCERY_SYNONYMS[normalized];
+    if (!withSynonym) {
+      const words = stripped.split(/\s+/);
+      const hasCheese = words.some((w) => CHEESE_WORDS.has(w) || w.includes("cheese"));
+      const hasBean = words.some((w) => BEAN_WORDS.has(w) || (w.includes("bean") && !w.includes("coffee") && w !== "vanilla"));
+      const hasTomato = words.some((w) => w === "tomato" || w === "tomatoes" || w.includes("tomato"));
+      const hasOnion = words.some((w) => w === "onion" || w === "onions" || w.includes("onion"));
+      const hasGarlic = words.some((w) => w === "garlic" || w.includes("garlic"));
+      if (hasCheese) withSynonym = "cheese";
+      else if (hasBean) withSynonym = "beans";
+      else if (hasTomato) withSynonym = "tomato";
+      else if (hasOnion) withSynonym = "onion";
+      else if (hasGarlic) withSynonym = "garlic";
+      else withSynonym = stripped;
+    }
     const words = withSynonym.split(/\s+/);
     const lastWord = words[words.length - 1];
     if (lastWord) {
@@ -737,25 +943,36 @@ export default function MealPlanPage() {
                       return `${greeting}, ${name}`;
                     })()}
                   </h1>
-                  <button
-                    type="button"
-                    onClick={handleScheduleAll}
-                    disabled={takeoutSlotsForSchedule.length === 0 || (scheduleProgress?.ordering ?? 0) > 0}
-                    className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {scheduleProgress && scheduleProgress.ordering > 0 ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="flex gap-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleAddTestDineOutSlots}
+                      disabled={addingDineOut}
+                      className="px-3 py-2 rounded-xl text-xs font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50"
+                      title="Add Friday and Saturday dinner as OpenTable slots for testing"
+                    >
+                      {addingDineOut ? "Adding…" : "Add test dine-out"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleScheduleAll}
+                      disabled={takeoutSlotsForSchedule.length === 0 || (scheduleProgress?.ordering ?? 0) > 0}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {scheduleProgress && scheduleProgress.ordering > 0 ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="flex gap-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </span>
+                          Ordering {scheduleProgress.done + scheduleProgress.ordering} of {scheduleProgress.total}…
                         </span>
-                        Ordering {scheduleProgress.done + scheduleProgress.ordering} of {scheduleProgress.total}…
-                      </span>
-                    ) : (
-                      "Schedule all deliveries"
-                    )}
-                  </button>
+                      ) : (
+                        "Schedule all deliveries"
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Day cards + nutrition widget */}
@@ -789,7 +1006,40 @@ export default function MealPlanPage() {
                                   {mealType}
                                 </p>
                                 {meal ? (
-                                  meal.isTakeout ? (
+                                  meal.isTakeout && meal.takeoutService === "opentable" ? (
+                                    <DineOutReservationButton
+                                      variant="card"
+                                      restaurantName={meal.recipeName}
+                                      slotKey={`${dayName}-${mealType}`}
+                                      dateStr={dateStr}
+                                      defaultTime={meal.takeoutDetails ?? "19:00"}
+                                      scheduleStatus={scheduleAllStatus[`${dateStr}-${planDayName}-${mealType}`]}
+                                      onClearScheduleError={() =>
+                                        setScheduleAllStatus((prev) => {
+                                          const next = { ...prev };
+                                          delete next[`${dateStr}-${planDayName}-${mealType}`];
+                                          return next;
+                                        })
+                                      }
+                                      onMealChange={
+                                        planDayName && activePlan?._id
+                                          ? async (restaurantName) => {
+                                              await upsertMeal({
+                                                mealPlanId: activePlan._id,
+                                                day: planDayName,
+                                                mealType,
+                                                recipeId: "dineout-opentable",
+                                                recipeName: restaurantName,
+                                                isTakeout: true,
+                                                takeoutService: "opentable",
+                                                takeoutDetails: getDefaultTimeForRestaurant(restaurantName),
+                                                isManualOverride: true,
+                                              });
+                                            }
+                                          : undefined
+                                      }
+                                    />
+                                  ) : meal.isTakeout ? (
                                     <TakeoutOrderButton
                                       variant="card"
                                       searchIntent={meal.recipeName}

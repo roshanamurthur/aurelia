@@ -21,6 +21,7 @@ const schema = defineSchema({
     preferredOrderMethod: v.optional(v.string()),
     deliveryAddress: v.optional(v.string()),
     takeoutDays: v.optional(v.array(v.string())),
+    takeoutSlots: v.optional(v.array(v.string())),
   }).index("by_userId", ["userId"]),
 
   mealPlans: defineTable({

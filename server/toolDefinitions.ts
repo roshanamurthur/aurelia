@@ -79,6 +79,11 @@ export const toolDefinitions: ChatCompletionTool[] = [
             },
             description: "Days for takeout/delivery. e.g. ['friday', 'saturday'].",
           },
+          takeoutSlots: {
+            type: "array",
+            items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+            description: "Which meals are takeout on takeoutDays. e.g. ['dinner'] or ['lunch','dinner']. Default dinner only if unspecified.",
+          },
         },
         required: [],
       },
@@ -265,7 +270,21 @@ export const toolDefinitions: ChatCompletionTool[] = [
           takeoutSlots: {
             type: "array",
             items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
-            description: "Which meal slots are takeout on takeoutDays. Default: ['lunch','dinner'].",
+            description: "Which meal slots are takeout on takeoutDays. Use ONLY the meals the user requested. If unspecified, default to ['dinner'] only. Never assume all meals.",
+          },
+          dineoutDays: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            },
+            description:
+              "Days when the user wants to dine out (OpenTable reservations). Those slots get SF restaurant names. Pass when user says e.g. 'dine out on Saturdays'.",
+          },
+          dineoutSlots: {
+            type: "array",
+            items: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+            description: "Which meal slots are dine-out on dineoutDays. Default: ['dinner'].",
           },
         },
         required: ["mealPlanId", "days", "mealSlots"],
@@ -282,6 +301,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
       name: "get_sf_meals",
       description:
         "Returns the curated list of SF restaurant meals for takeout. Use these EXACT names when calling update_meal for takeout (recipeName). Never use generic labels like 'Mexican takeout'.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_sf_restaurants",
+      description:
+        "Returns the curated list of SF restaurants on OpenTable for dine-out reservations. ALWAYS call this before adding a dine-out slot or when the user asks about restaurants. Returns { restaurants: string[] }. Use these EXACT names as recipeName when calling update_meal with takeoutService='opentable'.",
       parameters: {
         type: "object",
         properties: {},

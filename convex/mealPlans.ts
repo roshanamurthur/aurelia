@@ -322,6 +322,128 @@ export const batchUpsertMeals = mutation({
   },
 });
 
+/** Returns active meal plan IDs (for running seedDineOutSlots). Use: npx convex run mealPlans:listActivePlanIds */
+export const listActivePlanIds = query({
+  args: {},
+  handler: async (ctx) => {
+    const plans = await ctx.db.query("mealPlans").collect();
+    return plans
+      .filter((p) => p.status === "active")
+      .map((p) => ({ id: p._id, weekStartDate: p.weekStartDate }));
+  },
+});
+
+/** List users (for finding email). Run: npx convex run mealPlans:listUsers */
+export const listUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users.map((u) => ({ id: u._id, email: (u as { email?: string }).email, name: (u as { name?: string }).name }));
+  },
+});
+
+/** Wipe all meal plans for a user by email. Run: npx convex run mealPlans:wipeMealPlansForEmail '{"email":"user@example.com"}' */
+export const wipeMealPlansForEmail = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const users = await ctx.db.query("users").collect();
+    const emailLower = args.email.toLowerCase().trim();
+    const user = users.find((u) => {
+      const e = (u as { email?: string }).email;
+      return e && e.toLowerCase().trim() === emailLower;
+    });
+    if (!user) throw new Error(`User not found: ${args.email}. Use mealPlans:listUsers to see available emails.`);
+    const userId = user._id;
+
+    const allPlans = await ctx.db
+      .query("mealPlans")
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .collect();
+
+    let deletedMeals = 0;
+    let deletedGrocery = 0;
+    let deletedOrders = 0;
+    let deletedPlans = 0;
+
+    for (const plan of allPlans) {
+      const meals = await ctx.db
+        .query("plannedMeals")
+        .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", plan._id))
+        .collect();
+      for (const m of meals) {
+        await ctx.db.delete(m._id);
+        deletedMeals++;
+      }
+      const grocery = await ctx.db
+        .query("groceryLists")
+        .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", plan._id))
+        .first();
+      if (grocery) {
+        await ctx.db.delete(grocery._id);
+        deletedGrocery++;
+      }
+      const orders = await ctx.db
+        .query("orderEvents")
+        .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", plan._id))
+        .collect();
+      for (const o of orders) {
+        await ctx.db.delete(o._id);
+        deletedOrders++;
+      }
+      await ctx.db.delete(plan._id);
+      deletedPlans++;
+    }
+
+    return {
+      success: true,
+      message: `Wiped ${deletedPlans} meal plans, ${deletedMeals} meals, ${deletedGrocery} grocery lists, ${deletedOrders} order events for ${args.email}`,
+    };
+  },
+});
+
+/** One-time seed: add Friday and Saturday dinner as OpenTable slots. Run: npx convex run mealPlans:seedDineOutSlots '{"mealPlanId":"<id>"}' */
+export const seedDineOutSlots = mutation({
+  args: { mealPlanId: v.id("mealPlans") },
+  handler: async (ctx, args) => {
+    const plan = await ctx.db.get(args.mealPlanId);
+    if (!plan) throw new Error("Plan not found");
+    const userId = plan.userId;
+    const slots = [
+      { day: "friday", mealType: "dinner", recipeName: "House of Prime Rib" },
+      { day: "saturday", mealType: "dinner", recipeName: "Kokkari Estiatorio" },
+    ];
+    for (const slot of slots) {
+      const existing = await ctx.db
+        .query("plannedMeals")
+        .withIndex("by_mealPlanId_day_mealType", (q) =>
+          q.eq("mealPlanId", args.mealPlanId).eq("day", slot.day).eq("mealType", slot.mealType)
+        )
+        .first();
+      const patchFields = {
+        recipeId: "dineout-opentable",
+        recipeName: slot.recipeName,
+        isManualOverride: true,
+        isSkipped: false,
+        isTakeout: true,
+        takeoutService: "opentable",
+        takeoutDetails: "19:00",
+      };
+      if (existing) {
+        await ctx.db.patch(existing._id, patchFields);
+      } else {
+        await ctx.db.insert("plannedMeals", {
+          mealPlanId: args.mealPlanId,
+          userId,
+          day: slot.day,
+          mealType: slot.mealType,
+          ...patchFields,
+        });
+      }
+    }
+    return { success: true, message: "Added Friday and Saturday dinner as OpenTable" };
+  },
+});
+
 export const skipMeal = mutation({
   args: {
     mealPlanId: v.id("mealPlans"),
