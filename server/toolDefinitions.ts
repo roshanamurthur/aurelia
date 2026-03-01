@@ -85,7 +85,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "create_meal_plan",
       description:
-        "Creates a new empty weekly meal plan for a given week. Call this once before populating meals for a new week. If a plan already exists for that week, returns the existing plan ID.",
+        "Creates a new empty weekly meal plan for a given week. If a plan already exists for that week, returns the existing plan ID. Archives any previous active plans. IMPORTANT: After calling this, you MUST call populate_meal_plan with the returned mealPlanId to fill the meal slots. NEVER use search_recipes + update_meal to fill a full plan.",
       parameters: {
         type: "object",
         properties: {
@@ -121,7 +121,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: "update_meal",
       description:
-        "Assigns or replaces a meal in a specific day/meal slot. Two modes: (1) HOME-COOKED: search_recipes first, then call this with the Spoonacular recipeId and COMPLETE ingredients array. Meals without ingredients produce empty grocery lists. (2) TAKEOUT: set isTakeout=true, use a placeholder recipeId like 'takeout-doordash', and specify takeoutService. No ingredients needed for takeout.",
+        "Assigns or replaces a SINGLE meal in a specific day/meal slot. Use ONLY for individual meal swaps or takeout. For filling an entire plan, use populate_meal_plan instead. Two modes: (1) HOME-COOKED: search_recipes first, then call this with the Spoonacular recipeId and COMPLETE ingredients array. Meals without ingredients produce empty grocery lists. (2) TAKEOUT: set isTakeout=true, use a placeholder recipeId like 'takeout-doordash', and specify takeoutService. No ingredients needed for takeout.",
       parameters: {
         type: "object",
         properties: {

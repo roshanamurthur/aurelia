@@ -57,29 +57,19 @@ function pickRandomMeal(exclude?: string | null): string {
 
 interface TakeoutOrderButtonProps {
   variant?: "card" | "button";
+  /** When provided, skip the random-proposal step and order this item directly */
+  searchIntent?: string;
 }
 
-export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderButtonProps) {
+export default function TakeoutOrderButton({ variant = "button", searchIntent }: TakeoutOrderButtonProps) {
   const [status, setStatus] = useState<OrderStatus>("idle");
   const [proposedItem, setProposedItem] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const proposeTakeout = () => {
-    setProposedItem(pickRandomMeal());
-    setStatus("proposing");
-    setResult(null);
-    setLiveUrl(null);
-    setError(null);
-  };
-
-  const disapproveAndRegenerate = () => {
-    setProposedItem((current) => pickRandomMeal(current));
-  };
-
-  const confirmAndOrder = async () => {
-    if (!proposedItem) return;
+  const placeOrder = async (item: string) => {
+    setProposedItem(item);
     setStatus("ordering");
     setError(null);
 
@@ -87,7 +77,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
       const res = await fetch("/api/doordash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ searchIntent: proposedItem }),
+        body: JSON.stringify({ searchIntent: item }),
       });
       const data = await res.json();
 
@@ -102,6 +92,27 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
       setStatus("error");
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
+  };
+
+  const proposeTakeout = () => {
+    if (searchIntent) {
+      placeOrder(searchIntent);
+      return;
+    }
+    setProposedItem(pickRandomMeal());
+    setStatus("proposing");
+    setResult(null);
+    setLiveUrl(null);
+    setError(null);
+  };
+
+  const disapproveAndRegenerate = () => {
+    setProposedItem((current) => pickRandomMeal(current));
+  };
+
+  const confirmAndOrder = async () => {
+    if (!proposedItem) return;
+    placeOrder(proposedItem);
   };
 
   if (variant === "card") {

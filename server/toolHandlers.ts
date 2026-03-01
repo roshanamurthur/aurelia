@@ -60,9 +60,13 @@ export function createToolHandlers(authToken: string) {
     // ═══════════════════════════════════════════
 
     create_meal_plan: async (args: any) => {
-      return await convex.mutation(api.mealPlans.create, {
+      const result = await convex.mutation(api.mealPlans.create, {
         weekStartDate: args.weekStartDate,
       });
+      return {
+        ...result,
+        nextStep: `Call populate_meal_plan with mealPlanId "${result.mealPlanId}" to fill all meal slots. Do NOT use search_recipes + update_meal individually.`,
+      };
     },
 
     get_meal_plan: async (args: any) => {
@@ -72,7 +76,18 @@ export function createToolHandlers(authToken: string) {
     },
 
     update_meal: async (args: any) => {
-      let ingredients = args.ingredients;
+      // Normalize day/mealType to lowercase — UI lookups are case-sensitive
+      if (args.day) args.day = args.day.toLowerCase();
+      if (args.mealType) args.mealType = args.mealType.toLowerCase();
+
+      // Validate ingredients array — LLM sometimes sends malformed JSON
+      let ingredients = Array.isArray(args.ingredients)
+        ? args.ingredients.filter(
+            (i: any) =>
+              i && typeof i.name === "string" && typeof i.amount === "number" && typeof i.unit === "string"
+          )
+        : undefined;
+      if (ingredients && ingredients.length === 0) ingredients = undefined;
 
       // For home-cooked meals: if ingredients missing and recipeId is numeric,
       // fetch from Spoonacular as a safety net
@@ -144,14 +159,24 @@ export function createToolHandlers(authToken: string) {
     },
 
     populate_meal_plan: async (args: any) => {
-      const { mealPlanId, days, mealSlots, excludeRecipeIds = [] } = args;
+      // Normalize to lowercase — UI lookups are case-sensitive
+      const mealPlanId = args.mealPlanId;
+      const days = (args.days as string[]).map((d: string) => d.toLowerCase());
+      const mealSlots = (args.mealSlots as string[]).map((s: string) => s.toLowerCase());
+      const excludeRecipeIds = args.excludeRecipeIds || [];
+
+      // Guard: Spoonacular API key must exist
+      const spoonKey = process.env.SPOONACULAR_API_KEY;
+      if (!spoonKey) {
+        return { success: false, error: "SPOONACULAR_API_KEY is not configured. Cannot search for recipes." };
+      }
 
       // Build Spoonacular base params from dietary constraints
       const baseParams: Record<string, string> = {
         addRecipeInformation: "true",
         addRecipeNutrition: "true",
         sort: "popularity",
-        apiKey: process.env.SPOONACULAR_API_KEY!,
+        apiKey: spoonKey,
       };
       if (args.diet) baseParams.diet = args.diet;
       if (args.intolerances) baseParams.intolerances = args.intolerances;
@@ -159,30 +184,37 @@ export function createToolHandlers(authToken: string) {
       if (args.excludeIngredients) baseParams.excludeIngredients = args.excludeIngredients;
       if (args.maxCalories) baseParams.maxCalories = String(args.maxCalories);
 
-      // Map meal slots to Spoonacular types
-      const spoonacularType: Record<string, string> = {
-        breakfast: "breakfast",
-        lunch: "main course",
-        dinner: "main course",
-        snack: "snack",
+      // Per-slot search config: different Spoonacular types AND query keywords
+      // to ensure lunch vs dinner get different result pools
+      const slotSearchConfig: Record<string, { type: string; queries: string[] }> = {
+        breakfast: { type: "breakfast", queries: ["breakfast", "morning"] },
+        lunch: { type: "main course", queries: ["lunch", "salad"] },
+        dinner: { type: "main course", queries: ["dinner", "hearty"] },
+        snack: { type: "snack", queries: ["snack", "light"] },
       };
 
-      // Search Spoonacular: 2 calls per meal type (offset 0 and 15), all in parallel
-      const uniqueSlots = [...new Set(mealSlots as string[])];
+      // Search Spoonacular: 2 calls per meal slot (different queries), all in parallel
+      const uniqueSlots = [...new Set(mealSlots)];
+      const errors: string[] = [];
       const searchPromises = uniqueSlots.flatMap((slot) => {
-        const type = spoonacularType[slot] || "main course";
-        return [0, 15].map(async (offset) => {
+        const config = slotSearchConfig[slot] || { type: "main course", queries: ["meal"] };
+        return config.queries.map(async (query, i) => {
           const params = new URLSearchParams({
             ...baseParams,
-            type,
+            type: config.type,
+            query,
             number: "15",
-            offset: String(offset),
+            offset: String(i * 15),
           });
           try {
             const res = await fetch(
               `https://api.spoonacular.com/recipes/complexSearch?${params}`
             );
-            if (!res.ok) return [];
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              errors.push(`Spoonacular ${res.status} for ${slot}/${query}: ${text.slice(0, 100)}`);
+              return [];
+            }
             const data = await res.json();
             return (data.results || []).map((r: any) => ({
               id: String(r.id),
@@ -200,13 +232,25 @@ export function createToolHandlers(authToken: string) {
               })) || [],
               mealType: slot,
             }));
-          } catch {
+          } catch (err: any) {
+            errors.push(`Spoonacular fetch error for ${slot}/${query}: ${err.message}`);
             return [];
           }
         });
       });
 
       const searchResults = await Promise.all(searchPromises);
+
+      // If ALL searches failed, return an explicit error
+      const totalRecipes = searchResults.reduce((n, batch) => n + batch.length, 0);
+      if (totalRecipes === 0) {
+        return {
+          success: false,
+          error: `All Spoonacular searches failed. No recipes found.${errors.length > 0 ? " Errors: " + errors.join("; ") : ""}`,
+          mealsAssigned: 0,
+          totalSlots: days.length * mealSlots.length,
+        };
+      }
 
       // Group recipes by meal type, deduplicate
       const excludeSet = new Set(excludeRecipeIds as string[]);
@@ -234,8 +278,8 @@ export function createToolHandlers(authToken: string) {
         typeIndex[slot] = 0;
       }
 
-      for (const day of days as string[]) {
-        for (const slot of mealSlots as string[]) {
+      for (const day of days) {
+        for (const slot of mealSlots) {
           const pool = recipesByType[slot] || [];
           const idx = typeIndex[slot] || 0;
           if (idx >= pool.length) continue; // No more unique recipes available
@@ -260,20 +304,26 @@ export function createToolHandlers(authToken: string) {
       }
 
       // Batch write all meals
-      const totalSlots = (days as string[]).length * (mealSlots as string[]).length;
-      let batchResult = null;
-      if (meals.length > 0) {
-        batchResult = await convex.mutation(api.mealPlans.batchUpsertMeals, {
-          mealPlanId,
-          meals,
-        });
+      const totalSlots = days.length * mealSlots.length;
+      if (meals.length === 0) {
+        return {
+          success: false,
+          error: `Found ${totalRecipes} recipes from Spoonacular but none could be assigned after deduplication/filtering. Try relaxing dietary constraints.`,
+          mealsAssigned: 0,
+          totalSlots,
+        };
+      }
 
-        // Auto-generate grocery list
-        try {
-          await convex.mutation(api.groceryList.generate, { mealPlanId });
-        } catch {
-          // Non-fatal
-        }
+      const batchResult = await convex.mutation(api.mealPlans.batchUpsertMeals, {
+        mealPlanId,
+        meals,
+      });
+
+      // Auto-generate grocery list
+      try {
+        await convex.mutation(api.groceryList.generate, { mealPlanId });
+      } catch {
+        // Non-fatal — grocery list can be regenerated later
       }
 
       return {
@@ -288,13 +338,16 @@ export function createToolHandlers(authToken: string) {
           calories: m.calories,
         })),
         ...(meals.length < totalSlots && {
-          note: `Only ${meals.length} of ${totalSlots} slots filled. Spoonacular returned limited results for the given constraints. You can use search_recipes + update_meal to fill remaining slots manually.`,
+          note: `Only ${meals.length} of ${totalSlots} slots filled. You can use search_recipes + update_meal to fill remaining slots manually.`,
         }),
-        groceryListGenerated: meals.length > 0,
+        ...(errors.length > 0 && { warnings: errors }),
+        groceryListGenerated: true,
       };
     },
 
     remove_meal: async (args: any) => {
+      if (args.day) args.day = args.day.toLowerCase();
+      if (args.mealType) args.mealType = args.mealType.toLowerCase();
       return await convex.mutation(api.mealPlans.skipMeal, {
         mealPlanId: args.mealPlanId,
         day: args.day,

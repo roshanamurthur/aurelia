@@ -320,6 +320,9 @@ export default function MealPlanPage() {
                                   {mealType}
                                 </p>
                                 {meal ? (
+                                  meal.isTakeout ? (
+                                    <TakeoutOrderButton variant="card" searchIntent={meal.recipeName} />
+                                  ) : (
                                   <div>
                                     {(meal.recipeImageUrl || meal.sourceUrl || meal.recipeId) ? (
                                       <>
@@ -399,6 +402,7 @@ export default function MealPlanPage() {
                                       </p>
                                     )}
                                   </div>
+                                  )
                                 ) : (
                                   <div className="flex-1 flex items-start">
                                     <TakeoutOrderButton variant="card" />

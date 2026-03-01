@@ -9,14 +9,39 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
-    // Check for existing plan
+    // Archive ALL other active plans for this user (enforce single active plan)
+    const activePlans = await ctx.db
+      .query("mealPlans")
+      .withIndex("by_userId_status", (q) =>
+        q.eq("userId", userId).eq("status", "active")
+      )
+      .collect();
+
+    // Check for existing plan for this specific week
     const existing = await ctx.db
       .query("mealPlans")
       .withIndex("by_userId_week", (q) =>
         q.eq("userId", userId).eq("weekStartDate", args.weekStartDate)
       )
       .first();
-    if (existing) return { mealPlanId: existing._id, existing: true };
+    if (existing) {
+      // Archive every other active plan that isn't this one
+      for (const plan of activePlans) {
+        if (plan._id !== existing._id) {
+          await ctx.db.patch(plan._id, { status: "archived" });
+        }
+      }
+      // Reactivate this plan if it was archived
+      if (existing.status !== "active") {
+        await ctx.db.patch(existing._id, { status: "active" });
+      }
+      return { mealPlanId: existing._id, existing: true };
+    }
+
+    // No existing plan for this week — archive all active plans and create new
+    for (const plan of activePlans) {
+      await ctx.db.patch(plan._id, { status: "archived" });
+    }
     const id = await ctx.db.insert("mealPlans", {
       userId,
       weekStartDate: args.weekStartDate,
@@ -66,6 +91,30 @@ export const getActivePlan = query({
       .withIndex("by_mealPlanId", (q) => q.eq("mealPlanId", plan._id))
       .collect();
     return { ...plan, meals };
+  },
+});
+
+// One-time cleanup: archive all but the newest active plan for a user
+export const archiveStale = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const activePlans = await ctx.db
+      .query("mealPlans")
+      .withIndex("by_userId_status", (q) =>
+        q.eq("userId", userId).eq("status", "active")
+      )
+      .order("desc")
+      .collect();
+    if (activePlans.length <= 1) return { archived: 0 };
+    // Keep the first (newest), archive the rest
+    let archived = 0;
+    for (let i = 1; i < activePlans.length; i++) {
+      await ctx.db.patch(activePlans[i]._id, { status: "archived" });
+      archived++;
+    }
+    return { archived, keptPlanId: activePlans[0]._id };
   },
 });
 
