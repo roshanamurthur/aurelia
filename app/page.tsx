@@ -3,13 +3,14 @@
 import Chat from "@/app/components/Chat";
 import SignOutButton from "@/app/components/SignOutButton";
 import { useConvexAuth, useQuery } from "convex/react";
+import { motion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { api } from "../convex/_generated/api";
 
-const LANDING_PLACEHOLDER = "Calorie goals, cuisines, allergies, what you love...";
+const LANDING_PLACEHOLDER = "What's in store for this week?";
 
 function Tag({ label, onRemove }: { label: string; onRemove?: () => void }) {
   return (
@@ -147,7 +148,13 @@ export default function Home() {
         <div className="flex-1 overflow-y-auto bg-white">
           {/* HERO — Screenshot centered, large */}
           <section className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
-            <div className="w-full max-w-2xl mx-auto">
+            {/* Hero image — smooth scale + fade entrance */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-2xl mx-auto"
+            >
               <Image
                 src="/landing-hero.png"
                 alt="Aurelia — Plan, Order, Cook, Eat"
@@ -156,9 +163,16 @@ export default function Home() {
                 className="w-full h-auto object-contain"
                 priority
               />
-            </div>
+            </motion.div>
             <div className="w-full max-w-md mt-12 flex flex-col items-center gap-4">
-              <form onSubmit={handleLandingSubmit} className="w-full">
+              {/* Search bar — spring entrance + animated border beam */}
+              <motion.form
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 80, damping: 18, delay: 0.3 }}
+                onSubmit={handleLandingSubmit}
+                className="w-full"
+              >
                 <input
                   ref={inputRef}
                   type="text"
@@ -166,15 +180,43 @@ export default function Home() {
                   onChange={(e) => setText(e.target.value)}
                   placeholder={LANDING_PLACEHOLDER}
                   autoFocus
-                  className="w-full py-4 px-4 border-2 border-black bg-white text-black placeholder:text-black/60 text-base focus:outline-none"
+                  className="w-full py-3 border-b-2 border-black bg-transparent text-black placeholder:text-black/40 text-base focus:outline-none"
                 />
-              </form>
-              <Link
-                href="/meal-plan"
-                className="w-full py-4 px-6 border-2 border-black bg-white text-black font-semibold text-center hover:bg-black hover:text-white transition-colors"
+              </motion.form>
+              {/* "View your meal plan" — spring entrance + sweep fill on hover */}
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 80, damping: 18, delay: 0.45 }}
+                className="w-full"
               >
-                View your meal plan
-              </Link>
+                <Link
+                  href="/meal-plan"
+                  className="relative block border-2 border-black overflow-hidden group"
+                >
+                  <div className="absolute inset-0 bg-black -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]" />
+                  <span className="relative block py-4 px-6 font-semibold text-center text-black group-hover:text-white transition-colors duration-200 delay-75">
+                    View your meal plan
+                  </span>
+                </Link>
+              </motion.div>
+              {/* Auth link — subtle underlined text */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.7 }}
+                className="mt-4"
+              >
+                {isAuthenticated ? (
+                  <SignOutButton className="text-xs text-black/40 underline hover:text-black/70 transition-colors bg-transparent border-none cursor-pointer p-0">
+                    Sign out
+                  </SignOutButton>
+                ) : (
+                  <Link href="/login" className="text-xs text-black/40 underline hover:text-black/70 transition-colors">
+                    Sign in
+                  </Link>
+                )}
+              </motion.div>
             </div>
           </section>
         </div>

@@ -140,3 +140,9 @@ body {
     transform: scale(1) translateY(0);
   }
 }
+
+/* Border beam — white highlight rotating around a black border */
+@keyframes border-beam {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
