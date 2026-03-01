@@ -211,9 +211,9 @@ export async function POST(req: NextRequest) {
     // use default
   }
 
-  // If useChipotleCsv: read CSV, randomly pick one bowl, use its name as searchIntent
+  // If useChipotleCsv: read sf-meals.csv, randomly pick one meal, use its name as searchIntent
   if (useChipotleCsv) {
-    const csvPath = path.resolve(process.cwd(), "data", "chipotle-bowls.csv");
+    const csvPath = path.resolve(process.cwd(), "data", "sf-meals.csv");
     try {
       const csvContent = fs.readFileSync(csvPath, "utf-8");
       const lines = csvContent.split(/\r?\n/).filter((l) => l.trim());
@@ -230,7 +230,7 @@ export async function POST(req: NextRequest) {
         console.log(`[DoorDash] Picked from CSV: ${itemName}${calories ? ` (${calories} cal)` : ""}`);
       }
     } catch (e) {
-      console.warn("[DoorDash] Could not read chipotle-bowls.csv, using default:", e);
+      console.warn("[DoorDash] Could not read sf-meals.csv, using default:", e);
     }
   }
 

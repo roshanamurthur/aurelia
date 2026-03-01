@@ -14,6 +14,7 @@ type FridgeItem = { id: string; label: string };
 export default function MealPlanPage() {
   const { isLoading } = useConvexAuth();
   const activePlan = useQuery(api.mealPlans.getActivePlan);
+  const currentUser = useQuery(api.preferences.currentUser);
   const groceryList = useQuery(
     api.groceryList.get,
     activePlan?._id ? { mealPlanId: activePlan._id } : "skip"
@@ -25,6 +26,9 @@ export default function MealPlanPage() {
   const [fridgeItems, setFridgeItems] = useState<FridgeItem[]>([]);
   const [fridgeInput, setFridgeInput] = useState("");
   const [groceryGenerating, setGroceryGenerating] = useState(false);
+  const [instacartOrdering, setInstacartOrdering] = useState(false);
+  const [instacartResult, setInstacartResult] = useState<string | null>(null);
+  const [instacartError, setInstacartError] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -210,6 +214,25 @@ export default function MealPlanPage() {
     );
   };
 
+  const getDedupedGroceryItems = () => {
+    if (!groceryList?.items?.length) return [];
+    const seen = new Set<string>();
+    const filtered = groceryList.items.filter((item: { name: string }) => {
+      const key = getGroceryCanonicalKey(item.name);
+      if (seen.has(key)) return false;
+      if (isInFridge(item.name)) return false;
+      seen.add(key);
+      return true;
+    });
+    const hasSalt = seen.has("salt");
+    const hasPepper = seen.has("pepper");
+    return filtered.filter((item: { name: string }) => {
+      const norm = item.name.toLowerCase().trim().replace(/\s+/g, " ");
+      if (norm === "salt and pepper" && hasSalt && hasPepper) return false;
+      return true;
+    });
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-[#fdfbf8] via-[#f9f5f0] to-[#f5efe8] dark:from-stone-950 dark:via-stone-900 dark:to-stone-950">
       {/* Main content */}
@@ -224,7 +247,6 @@ export default function MealPlanPage() {
               </Link>
             </div>
             <div className="flex items-center gap-3">
-              <TakeoutOrderButton variant="button" />
               <Link
                 href="/"
                 className="px-4 py-2 rounded-xl text-sm font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 dark:text-stone-400 dark:hover:text-stone-200 dark:hover:bg-stone-800 transition-colors"
@@ -258,21 +280,19 @@ export default function MealPlanPage() {
             ) : (
               <>
                 <div className="mb-8">
-                  <h1 className="font-display text-2xl font-semibold text-stone-800 dark:text-stone-100 mb-1">
+                  <h1 className="font-display text-3xl font-semibold text-stone-800 dark:text-stone-100">
                     {(() => {
                       const hour = new Date().getHours();
                       const greeting =
                         hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-                      return `${greeting}, Disha`;
+                      const name = currentUser?.name ?? currentUser?.email?.split("@")[0] ?? "there";
+                      return `${greeting}, ${name}`;
                     })()}
                   </h1>
-                  <p className="text-stone-500 dark:text-stone-400">
-                    Week of {activePlan.weekStartDate}
-                  </p>
                 </div>
 
                 {/* Day cards + nutrition widget */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
                   {days.map((day) => {
                     const dayCalories = getDayCalories(day);
                     return (
@@ -290,13 +310,13 @@ export default function MealPlanPage() {
                             </span>
                           )}
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-0">
                           {mealTypes.map((mealType) => {
                             const meal = getMeal(day, mealType);
                             const isExpanded = expandedRecipe?.day === day && expandedRecipe?.mealType === mealType;
                             return (
-                              <div key={`${day}-${mealType}`} className="border-b border-stone-100 dark:border-stone-700/40 last:border-0 pb-3 last:pb-0">
-                                <p className="text-xs font-medium text-stone-500 dark:text-stone-400 capitalize mb-1">
+                              <div key={`${day}-${mealType}`} className="border-b border-stone-100 dark:border-stone-700/40 last:border-0 pt-3 pb-3 last:pb-0 min-h-[72px] flex flex-col">
+                                <p className="text-xs font-medium text-stone-500 dark:text-stone-400 capitalize mb-1 shrink-0">
                                   {mealType}
                                 </p>
                                 {meal ? (
@@ -380,7 +400,9 @@ export default function MealPlanPage() {
                                     )}
                                   </div>
                                 ) : (
-                                  <TakeoutOrderButton variant="card" />
+                                  <div className="flex-1 flex items-start">
+                                    <TakeoutOrderButton variant="card" />
+                                  </div>
                                 )}
                               </div>
                             );
@@ -556,24 +578,7 @@ export default function MealPlanPage() {
                   (groceryList?.items && groceryList.items.length > 0) ? (
                     <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 overflow-y-auto">
                       <div className="grid grid-cols-3 gap-2">
-                        {(() => {
-                          const seen = new Set<string>();
-                          const deduped = groceryList.items.filter((item: { name: string }) => {
-                            const key = getGroceryCanonicalKey(item.name);
-                            if (seen.has(key)) return false;
-                            if (isInFridge(item.name)) return false;
-                            seen.add(key);
-                            return true;
-                          });
-                          const hasSalt = seen.has("salt");
-                          const hasPepper = seen.has("pepper");
-                          return deduped
-                            .filter((item: { name: string }) => {
-                              const norm = item.name.toLowerCase().trim().replace(/\s+/g, " ");
-                              if (norm === "salt and pepper" && hasSalt && hasPepper) return false;
-                              return true;
-                            })
-                            .map((item: { name: string }, i: number) => {
+                        {getDedupedGroceryItems().map((item: { name: string }, i: number) => {
                               const canonicalKey = getGroceryCanonicalKey(item.name);
                               const displayName =
                                 canonicalKey.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -605,9 +610,58 @@ export default function MealPlanPage() {
                             </span>
                           </div>
                         );
-                        });
-                        })()}
+                        })}
                       </div>
+                      {getDedupedGroceryItems().length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const items = getDedupedGroceryItems();
+                              if (items.length === 0) return;
+                              setInstacartOrdering(true);
+                              setInstacartResult(null);
+                              setInstacartError(null);
+                              try {
+                                const res = await fetch("/api/instacart", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    items: items.map((i: { name: string; amount?: number; unit?: string }) => ({
+                                      name: i.name,
+                                      amount: i.amount,
+                                      unit: i.unit,
+                                    })),
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) {
+                                  setInstacartError(data.error || "Order failed");
+                                  return;
+                                }
+                                setInstacartResult(data.output || "Items added to cart.");
+                                if (data.liveUrl) {
+                                  window.open(data.liveUrl, "_blank");
+                                }
+                              } catch (err) {
+                                setInstacartError(err instanceof Error ? err.message : "Something went wrong");
+                              } finally {
+                                setInstacartOrdering(false);
+                              }
+                            }}
+                            disabled={instacartOrdering}
+                            className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-60 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+                          >
+                            {instacartOrdering ? "Adding to Instacart…" : "Order on Instacart"}
+                          </button>
+                          {instacartResult && (
+                            <p className="text-xs text-rust-600 dark:text-rust-400">{instacartResult}</p>
+                          )}
+                          {instacartError && (
+                            <p className="text-xs text-stone-600 dark:text-stone-400">{instacartError}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="relative flex-1 min-h-[140px] rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 p-3 flex flex-col items-center justify-center">

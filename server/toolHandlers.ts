@@ -530,21 +530,70 @@ export function createToolHandlers(authToken: string) {
       const groceryList = await convex.query(api.groceryList.get, {
         mealPlanId: args.mealPlanId,
       });
+      const items = groceryList?.items ?? [];
       const { eventId } = await convex.mutation(api.orderEvents.create, {
         mealPlanId: args.mealPlanId,
         service: "instacart",
         action: "initiated",
         details: JSON.stringify({
           deliveryAddress: args.deliveryAddress,
-          itemCount: groceryList?.items?.length || 0,
+          itemCount: items.length,
         }),
       });
-      // TODO: Trigger Browser Use agent here
-      return {
-        eventId,
-        status: "initiated",
-        message: "Instacart order initiated. Browser Use agent integration pending.",
-      };
+
+      if (items.length === 0) {
+        return {
+          eventId,
+          status: "initiated",
+          message: "Grocery list is empty. Generate a meal plan and grocery list first.",
+        };
+      }
+
+      try {
+        const instacartRes = await fetch(
+          `${process.env.SITE_URL || "http://localhost:3005"}/api/instacart`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: items.map((i: { name: string; amount?: number; unit?: string }) => ({
+                name: i.name,
+                amount: i.amount,
+                unit: i.unit,
+              })),
+            }),
+          }
+        );
+        const instacartResult = await instacartRes.json();
+
+        if (!instacartRes.ok) {
+          return {
+            eventId,
+            status: "initiated",
+            message: `Instacart agent failed: ${instacartResult.error || instacartRes.statusText}. Check docs/INSTACART_SETUP.md.`,
+          };
+        }
+
+        await convex.mutation(api.orderEvents.create, {
+          mealPlanId: args.mealPlanId,
+          service: "instacart",
+          action: "confirmed",
+          details: JSON.stringify(instacartResult),
+        });
+
+        return {
+          eventId,
+          status: "confirmed",
+          message: `Added ${items.length} items to Instacart cart. ${instacartResult.output || ""}`,
+          result: instacartResult,
+        };
+      } catch (error: any) {
+        return {
+          eventId,
+          status: "initiated",
+          message: `Instacart order logged but Browser Use agent could not be reached: ${error.message}. You can retry from the grocery list.`,
+        };
+      }
     },
 
     initiate_opentable_reservation: async (args: any) => {

@@ -2,29 +2,56 @@
 
 import { useState } from "react";
 
-const CHIPOTLE_BOWLS = [
+// Meals from SF restaurants near YC headquarters (matches data/sf-meals.csv)
+const SF_MEALS = [
   "Chipotle Chicken Bowl",
   "Chipotle Steak Bowl",
   "Chipotle Barbacoa Bowl",
-  "Chipotle Carnitas Bowl",
   "Chipotle Sofritas Bowl",
   "Chipotle Veggie Bowl",
-  "Chipotle Chicken Burrito Bowl",
-  "Chipotle Steak Burrito Bowl",
-  "Chipotle Barbacoa Burrito Bowl",
-  "Chipotle Carnitas Burrito Bowl",
-  "Chipotle Sofritas Burrito Bowl",
-  "Chipotle Veggie Burrito Bowl",
-  "Chipotle Chicken Salad Bowl",
-  "Chipotle Steak Salad Bowl",
-  "Chipotle Veggie Salad Bowl",
+  "Sweetgreen Guacamole Greens",
+  "Sweetgreen Harvest Bowl",
+  "Sweetgreen Kale Caesar",
+  "Souvla Chicken Gyro",
+  "Souvla Lamb Gyro",
+  "Souvla Greek Salad",
+  "Mendocino Farms Mendo Salad",
+  "Mendocino Farms Not So Fried Chicken Sandwich",
+  "Mendocino Farms Peruvian Steak Sandwich",
+  "Panera Broccoli Cheddar Soup",
+  "Panera Fuji Apple Salad",
+  "Panera Chipotle Chicken Avocado Melt",
+  "Panda Express Orange Chicken Bowl",
+  "Panda Express Kung Pao Chicken Bowl",
+  "Panda Express Beijing Beef Bowl",
+  "Blaze Pizza Build Your Own Pizza",
+  "Blaze Pizza Veggie Pizza",
+  "Shake Shack ShackBurger",
+  "Shake Shack Chicken Shack",
+  "Shake Shack Crinkle Cut Fries",
+  "Ike's Love and Sandwiches Dutch Crunch Club",
+  "Ike's Love and Sandwiches Menage a Trois",
+  "The Grove Caesar Salad",
+  "The Grove Turkey Club",
+  "Gordo Taqueria Super Steak Burrito",
+  "Gordo Taqueria Super Chicken Burrito",
+  "Gordo Taqueria Veggie Burrito",
+  "Mission Chinese Thrice Cooked Bacon Rice Cakes",
+  "Mission Chinese Mapo Tofu",
+  "Mission Chinese Salt Cod Fried Rice",
+  "SoMa Pizza Margherita Pizza",
+  "SoMa Pizza Pepperoni Pizza",
+  "Sushi Bistro Salmon Roll",
+  "Sushi Bistro Spicy Tuna Roll",
+  "Dumpling Home Xiao Long Bao",
+  "Dumpling Home Pan Fried Pork Dumplings",
 ];
 
 type OrderStatus = "idle" | "proposing" | "ordering" | "success" | "error";
 
-function pickRandomBowl(exclude?: string | null): string {
-  const options = exclude ? CHIPOTLE_BOWLS.filter((b) => b !== exclude) : CHIPOTLE_BOWLS;
-  const list = options.length > 0 ? options : CHIPOTLE_BOWLS;
+function pickRandomMeal(exclude?: string | null): string {
+  const options = exclude ? SF_MEALS.filter((m) => m !== exclude) : SF_MEALS;
+  const list = options.length > 0 ? options : SF_MEALS;
   return list[Math.floor(Math.random() * list.length)]!;
 }
 
@@ -40,7 +67,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
   const [error, setError] = useState<string | null>(null);
 
   const proposeTakeout = () => {
-    setProposedItem(pickRandomBowl());
+    setProposedItem(pickRandomMeal());
     setStatus("proposing");
     setResult(null);
     setLiveUrl(null);
@@ -48,7 +75,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
   };
 
   const disapproveAndRegenerate = () => {
-    setProposedItem((current) => pickRandomBowl(current));
+    setProposedItem((current) => pickRandomMeal(current));
   };
 
   const confirmAndOrder = async () => {
@@ -79,32 +106,32 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
 
   if (variant === "card") {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2">
+      <div className="flex-1 flex flex-col w-full gap-2">
         {status === "idle" && (
           <button
             type="button"
             onClick={proposeTakeout}
-            className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+            className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
           >
             Order Takeout
           </button>
         )}
         {status === "proposing" && proposedItem && (
-          <div className="text-center px-2 space-y-2">
+          <div className="w-full space-y-2">
             <p className="text-xs text-stone-500 dark:text-stone-400">We&apos;ll order:</p>
             <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{proposedItem}</p>
-            <div className="flex gap-2 justify-center">
+            <div className="flex gap-2 w-full">
               <button
                 type="button"
                 onClick={confirmAndOrder}
-                className="px-3 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+                className="flex-1 py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
               >
                 Approve
               </button>
               <button
                 type="button"
                 onClick={disapproveAndRegenerate}
-                className="px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
+                className="flex-1 py-2 rounded-xl bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 border border-stone-200 dark:border-stone-600 text-stone-700 dark:text-stone-300 text-sm font-medium transition-all active:scale-[0.97]"
               >
                 Different item
               </button>
@@ -128,7 +155,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
           </div>
         )}
         {status === "success" && (
-          <div className="text-center px-2">
+          <div className="w-full text-center">
             <p className="text-sm text-rust-600 dark:text-rust-400 font-medium">Added to cart</p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{proposedItem}</p>
             <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
@@ -137,7 +164,7 @@ export default function TakeoutOrderButton({ variant = "button" }: TakeoutOrderB
           </div>
         )}
         {status === "error" && (
-          <div className="text-center px-2">
+          <div className="w-full text-center">
             <p className="text-sm text-stone-700 dark:text-stone-300 font-medium">Failed</p>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{error}</p>
             <button type="button" onClick={proposeTakeout} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
