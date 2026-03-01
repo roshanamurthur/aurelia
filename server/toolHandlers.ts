@@ -156,9 +156,9 @@ export function createToolHandlers(authToken: string) {
         fat: args.fat,
         ingredients,
         isManualOverride: args.isManualOverride ?? false,
-        isTakeout: args.isTakeout,
-        takeoutService: args.takeoutService,
-        takeoutDetails: args.takeoutDetails,
+        isTakeout: args.isTakeout ?? false,
+        takeoutService: args.isTakeout ? args.takeoutService : undefined,
+        takeoutDetails: args.isTakeout ? args.takeoutDetails : undefined,
       });
       if (duplicateWarning) {
         return { ...result, duplicateWarning };
