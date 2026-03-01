@@ -1,0 +1,161 @@
+"use client";
+
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatHandle {
+  send: (msg: string) => void;
+}
+
+interface ChatProps {
+  variant: "full" | "panel";
+  onNavigate?: (path: string) => void;
+  onFirstMessage?: () => void;
+  placeholder?: string;
+  initialMessage?: string;
+}
+
+const Chat = forwardRef<ChatHandle, ChatProps>(function Chat(
+  { variant, onNavigate, onFirstMessage, placeholder, initialMessage },
+  ref
+) {
+  const [sessionId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const existing = sessionStorage.getItem("aurelia-session-id");
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem("aurelia-session-id", id);
+    return id;
+  });
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hasSentRef = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialSentRef = useRef(false);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const sendMessage = async (content: string) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    setError(null);
+    setText("");
+
+    if (!hasSentRef.current) {
+      hasSentRef.current = true;
+      onFirstMessage?.();
+    }
+
+    setMessages((m) => [...m, { role: "user", content: trimmed }]);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed, sessionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+
+      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
+
+      if (data.navigateTo && onNavigate) {
+        setTimeout(() => onNavigate(data.navigateTo), 1500);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({ send: sendMessage }));
+
+  // Send initial message on mount
+  useEffect(() => {
+    if (initialMessage && !initialSentRef.current) {
+      initialSentRef.current = true;
+      sendMessage(initialMessage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(text);
+  };
+
+  const isPanel = variant === "panel";
+
+  return (
+    <div className={`flex flex-col ${isPanel ? "h-full" : "max-w-2xl mx-auto w-full px-5 min-h-0 overflow-hidden"}`}>
+      <div className={`flex-1 overflow-y-auto overflow-x-hidden ${isPanel ? "px-4 pt-4 pb-2 space-y-3" : "pt-12 pb-4 space-y-6"}`}>
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[85%] rounded-2xl leading-relaxed ${
+                isPanel ? "px-3.5 py-2.5" : "px-5 py-4"
+              } ${
+                msg.role === "user"
+                  ? `bg-rust-500/95 text-white shadow-lg shadow-rust-500/15 font-medium ${isPanel ? "text-sm" : "text-[17px]"}`
+                  : `bg-white/95 dark:bg-stone-800/95 text-stone-800 dark:text-stone-200 shadow-sm border border-stone-200/60 dark:border-stone-700/50 ${isPanel ? "text-sm" : "text-[18px]"}`
+              }`}
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className={`rounded-2xl bg-white/95 dark:bg-stone-800/95 shadow-sm border border-stone-200/60 dark:border-stone-700/50 ${isPanel ? "px-3.5 py-2.5" : "px-5 py-4"}`}>
+              <span className="flex gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {error && (
+        <p className={`text-sm text-red-600 dark:text-red-400 mb-2 ${isPanel ? "px-4" : "px-1"}`}>{error}</p>
+      )}
+
+      <form onSubmit={handleSubmit} className={`shrink-0 ${isPanel ? "px-4 pb-4 pt-2" : "pt-4 pb-6"}`}>
+        <div className={`flex ${isPanel ? "gap-2" : "gap-3"} rounded-2xl bg-white/95 dark:bg-stone-900/80 backdrop-blur-md ${isPanel ? "py-2 pl-4 pr-2" : "py-3 pl-6 pr-3"} shadow-[0_4px_24px_rgba(0,0,0,0.06)] focus-within:shadow-[0_4px_28px_rgba(0,0,0,0.08)] transition-shadow duration-200 border border-stone-200/60 dark:border-stone-700/50`}>
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={placeholder || "Tell me about your dietary preferences, or ask me to plan your meals..."}
+            disabled={loading}
+            className={`flex-1 bg-transparent px-2 py-2 text-stone-800 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 ${isPanel ? "text-sm" : "text-base"} focus:outline-none disabled:opacity-60 min-w-0`}
+          />
+          <button
+            type="submit"
+            disabled={!text.trim() || loading}
+            className={`rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-all active:scale-[0.98] shrink-0 shadow-sm shadow-rust-500/20 ${isPanel ? "px-4 py-2 text-sm" : "px-5 py-2.5 text-base"}`}
+          >
+            Send
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+});
+
+export default Chat;

@@ -1,35 +1,49 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useConvexAuth } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
+  const { signIn } = useAuthActions();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/");
+    }
+  }, [isAuthenticated, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const res = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-      if (res?.error) {
-        setError("Invalid email or password");
-        return;
-      }
-      window.location.href = "/meal-plan";
+      await signIn("password", { email, password, flow: "signIn" });
     } catch {
-      setError("Something went wrong");
+      setError("Invalid email or password");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "linear-gradient(-45deg, #fdf6f3 0%, #f0f5fa 50%, #f9e8e0 100%)" }}>
+        <div className="flex gap-2">
+          <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-2 h-2 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -86,7 +100,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3 rounded-xl bg-rust-500/90 hover:bg-rust-600 disabled:opacity-50 text-white font-medium transition-colors"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-stone-500 dark:text-stone-400">

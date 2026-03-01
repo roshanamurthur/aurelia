@@ -1,0 +1,78 @@
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
+
+export const get = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    return await ctx.db
+      .query("preferences")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+  },
+});
+
+export const createDefaults = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const existing = await ctx.db
+      .query("preferences")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (existing) return existing._id;
+    return await ctx.db.insert("preferences", {
+      userId,
+      dietaryRestrictions: [],
+      allergies: [],
+      cuisinePreferences: [],
+      excludedIngredients: [],
+      mealSlots: ["breakfast", "lunch", "dinner"],
+      householdSize: 1,
+    });
+  },
+});
+
+export const update = mutation({
+  args: {
+    dietaryRestrictions: v.optional(v.array(v.string())),
+    allergies: v.optional(v.array(v.string())),
+    cuisinePreferences: v.optional(v.array(v.string())),
+    excludedIngredients: v.optional(v.array(v.string())),
+    calorieTarget: v.optional(v.number()),
+    proteinTargetGrams: v.optional(v.number()),
+    carbTargetGrams: v.optional(v.number()),
+    fatTargetGrams: v.optional(v.number()),
+    householdSize: v.optional(v.number()),
+    budgetPerWeek: v.optional(v.number()),
+    mealSlots: v.optional(v.array(v.string())),
+    preferredOrderMethod: v.optional(v.string()),
+    deliveryAddress: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    let prefs = await ctx.db
+      .query("preferences")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (!prefs) {
+      const id = await ctx.db.insert("preferences", {
+        userId,
+        ...args,
+      });
+      return { success: true, id };
+    }
+    const updates: Record<string, any> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (value !== undefined) {
+        updates[key] = value;
+      }
+    }
+    await ctx.db.patch(prefs._id, updates);
+    return { success: true, id: prefs._id };
+  },
+});
