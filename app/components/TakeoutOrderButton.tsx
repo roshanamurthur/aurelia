@@ -1,51 +1,10 @@
 "use client";
 
+import { SF_MEALS_CALORIES } from "@/lib/sfMeals";
 import { useState } from "react";
 
-// Meals from SF restaurants near YC headquarters (matches data/sf-meals.csv)
-const SF_MEALS = [
-  "Chipotle Chicken Bowl",
-  "Chipotle Steak Bowl",
-  "Chipotle Barbacoa Bowl",
-  "Chipotle Sofritas Bowl",
-  "Chipotle Veggie Bowl",
-  "Sweetgreen Guacamole Greens",
-  "Sweetgreen Harvest Bowl",
-  "Sweetgreen Kale Caesar",
-  "Souvla Chicken Gyro",
-  "Souvla Lamb Gyro",
-  "Souvla Greek Salad",
-  "Mendocino Farms Mendo Salad",
-  "Mendocino Farms Not So Fried Chicken Sandwich",
-  "Mendocino Farms Peruvian Steak Sandwich",
-  "Panera Broccoli Cheddar Soup",
-  "Panera Fuji Apple Salad",
-  "Panera Chipotle Chicken Avocado Melt",
-  "Panda Express Orange Chicken Bowl",
-  "Panda Express Kung Pao Chicken Bowl",
-  "Panda Express Beijing Beef Bowl",
-  "Blaze Pizza Build Your Own Pizza",
-  "Blaze Pizza Veggie Pizza",
-  "Shake Shack ShackBurger",
-  "Shake Shack Chicken Shack",
-  "Shake Shack Crinkle Cut Fries",
-  "Ike's Love and Sandwiches Dutch Crunch Club",
-  "Ike's Love and Sandwiches Menage a Trois",
-  "The Grove Caesar Salad",
-  "The Grove Turkey Club",
-  "Gordo Taqueria Super Steak Burrito",
-  "Gordo Taqueria Super Chicken Burrito",
-  "Gordo Taqueria Veggie Burrito",
-  "Mission Chinese Thrice Cooked Bacon Rice Cakes",
-  "Mission Chinese Mapo Tofu",
-  "Mission Chinese Salt Cod Fried Rice",
-  "SoMa Pizza Margherita Pizza",
-  "SoMa Pizza Pepperoni Pizza",
-  "Sushi Bistro Salmon Roll",
-  "Sushi Bistro Spicy Tuna Roll",
-  "Dumpling Home Xiao Long Bao",
-  "Dumpling Home Pan Fried Pork Dumplings",
-];
+// Simple, searchable meals (matches data/sf-meals.csv)
+const SF_MEALS = Object.keys(SF_MEALS_CALORIES);
 
 type OrderStatus = "idle" | "proposing" | "ordering" | "success" | "error";
 
@@ -66,15 +25,29 @@ function pickMealForSlot(slotKey: string): string {
   return SF_MEALS[idx]!;
 }
 
+export type ScheduleStatus = {
+  status: "ordering" | "success" | "error";
+  progressMessage?: string;
+  liveUrl?: string;
+  scheduledFor?: string;
+  error?: string;
+};
+
 interface TakeoutOrderButtonProps {
   variant?: "card" | "button";
   /** When provided, skip the random-proposal step and order this item directly */
   searchIntent?: string;
   /** e.g. "friday-dinner" — used as fallback when searchIntent is empty, so every slot shows a specific meal */
   slotKey?: string;
+  /** Called when user selects a takeout meal (Different item or Order) — persists to plan so calories update */
+  onMealChange?: (mealName: string) => void;
+  /** When set (e.g. from Schedule All), show this status inline instead of idle — overrides internal state */
+  scheduleStatus?: ScheduleStatus | null;
+  /** Called when user clicks Retry on a schedule-status error — parent can clear the slot so user can retry */
+  onClearScheduleError?: () => void;
 }
 
-export default function TakeoutOrderButton({ variant = "button", searchIntent, slotKey }: TakeoutOrderButtonProps) {
+export default function TakeoutOrderButton({ variant = "button", searchIntent, slotKey, onMealChange, scheduleStatus, onClearScheduleError }: TakeoutOrderButtonProps) {
   const baseMeal = searchIntent?.trim() || (slotKey ? pickMealForSlot(slotKey) : null);
   const [overrideMeal, setOverrideMeal] = useState<string | null>(null);
   const displayMeal = overrideMeal ?? baseMeal;
@@ -83,49 +56,89 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
   const [result, setResult] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string>("Searching for item...");
 
   const placeOrder = async (item: string) => {
     setProposedItem(item);
     setStatus("ordering");
     setError(null);
+    setProgressMessage("Searching for item...");
 
     try {
       const res = await fetch("/api/doordash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ searchIntent: item }),
+        body: JSON.stringify({ searchIntent: item, stream: true }),
       });
-      const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Order failed");
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("text/event-stream")) {
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        if (!reader) throw new Error("No response body");
+        let buffer = "";
+        let gotDone = false;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === "step") {
+                  const raw = (data.message || "").toLowerCase();
+                  let friendly = data.message || "Working...";
+                  if (raw.includes("search") || raw.includes("finding")) friendly = "Searching for item...";
+                  else if (raw.includes("restaurant") || (raw.includes("click") && raw.includes("first"))) friendly = "Opening restaurant...";
+                  else if (raw.includes("add") && (raw.includes("cart") || raw.includes("menu"))) friendly = "Adding to cart...";
+                  else if (raw.length > 50) friendly = raw.slice(0, 47) + "...";
+                  setProgressMessage(friendly);
+                } else if (data.type === "done") {
+                  setStatus("success");
+                  setResult(data.output || "Added to cart.");
+                  setLiveUrl(data.liveUrl || null);
+                  gotDone = true;
+                  return;
+                } else if (data.type === "error") {
+                  throw new Error(data.error || "Order failed");
+                }
+              } catch (e) {
+                if (e instanceof SyntaxError) continue;
+                throw e;
+              }
+            }
+          }
+        }
+        if (!gotDone) throw new Error("Connection interrupted. Please check your order.");
+      } else {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Order failed");
+        }
+        setStatus("success");
+        setResult(data.output || "Added to cart.");
+        setLiveUrl(data.liveUrl || null);
       }
-
-      setStatus("success");
-      setResult(data.output || "Added to cart.");
-      setLiveUrl(data.liveUrl || null);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
-  const handleOrder = () => {
-    if (displayMeal) {
-      placeOrder(displayMeal);
-    } else {
-      const picked = pickRandomMeal();
-      setOverrideMeal(picked);
-      placeOrder(picked);
-    }
+  const handleOrder = async () => {
+    const mealToOrder = displayMeal ?? pickRandomMeal();
+    if (!displayMeal) setOverrideMeal(mealToOrder);
+    await onMealChange?.(mealToOrder);
+    placeOrder(mealToOrder);
   };
 
-  const handleDifferent = () => {
-    if (displayMeal) {
-      setOverrideMeal(pickRandomMeal(displayMeal));
-    } else {
-      setOverrideMeal(pickRandomMeal());
-    }
+  const handleDifferent = async () => {
+    const newMeal = displayMeal ? pickRandomMeal(displayMeal) : pickRandomMeal();
+    setOverrideMeal(newMeal);
+    await onMealChange?.(newMeal);
   };
 
   const openApproveFlow = () => {
@@ -135,14 +148,47 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
     }
   };
 
+  // Small DoorDash indicator — dot is red (idle), orange (ordering), green (success)
+  const DoorDashBadge = ({ onDark = false, dotStatus }: { onDark?: boolean; dotStatus?: "idle" | "ordering" | "success" }) => {
+    const dotColor =
+      dotStatus === "ordering"
+        ? "bg-amber-500"
+        : dotStatus === "success"
+          ? "bg-emerald-500"
+          : "bg-[#FF3008]";
+    return (
+      <span
+        className={`inline-flex items-center gap-0.5 text-xs font-medium ${onDark ? "text-white/80" : "text-stone-400 dark:text-stone-500"}`}
+        title="Orders via DoorDash"
+      >
+        <span className={`w-1 h-1 rounded-full ${dotColor}`} aria-hidden />
+        DoorDash
+      </span>
+    );
+  };
+
+  // Shared card style — matches recipe cards: stone border, same padding
+  const cardBase = "w-full text-left py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-600 bg-white dark:bg-stone-800/80";
+
+  // When scheduleStatus is set (from Schedule All), show that state inline — takes precedence over internal status
+  const effectiveStatus = scheduleStatus
+    ? (scheduleStatus.status === "ordering"
+        ? "ordering"
+        : scheduleStatus.status === "success"
+          ? "success"
+          : scheduleStatus.status === "error"
+            ? "error"
+            : "idle")
+    : status;
+
   if (variant === "card") {
     return (
-      <div className="flex-1 flex flex-col w-full gap-2">
-        {status === "idle" && (
+      <div className="w-full shrink-0">
+        {effectiveStatus === "idle" && (
           displayMeal ? (
-            <div className="w-full text-left py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-600 bg-white dark:bg-stone-800/80 hover:border-rust-300 dark:hover:border-rust-700 transition-colors">
-              <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2">{displayMeal}</p>
-              <div className="flex items-center gap-2 mt-2">
+            <div className={`${cardBase} hover:border-rust-300 dark:hover:border-rust-700 transition-colors`}>
+              <p className="text-sm font-medium text-stone-800 dark:text-stone-200 line-clamp-2 leading-tight">{displayMeal}</p>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                 <button
                   type="button"
                   onClick={handleOrder}
@@ -150,11 +196,12 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
                 >
                   Order
                 </button>
+                <DoorDashBadge />
                 <span className="text-stone-300 dark:text-stone-600">·</span>
                 <button
                   type="button"
                   onClick={handleDifferent}
-                  className="text-[10px] font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:underline"
+                  className="text-xs font-medium text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 hover:underline"
                 >
                   Different item
                 </button>
@@ -164,44 +211,91 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
             <button
               type="button"
               onClick={openApproveFlow}
-              className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm"
+              className="w-full py-2 rounded-xl bg-rust-500/90 hover:bg-rust-600 text-white text-sm font-medium transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5"
             >
               Order Takeout
+              <DoorDashBadge onDark />
             </button>
           )
         )}
-        {status === "ordering" && (
-          <div className="text-center px-2">
-            <div className="flex gap-1 justify-center mb-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-rust-600 animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+        {effectiveStatus === "ordering" && (
+          <div className={cardBase}>
+            <div className="flex items-center gap-2">
+              <DoorDashBadge dotStatus="ordering" />
+              <div className="flex gap-0.5 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+                  {scheduleStatus ? displayMeal : proposedItem}
+                </p>
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  {scheduleStatus?.progressMessage ?? (scheduleStatus ? "Ordering…" : progressMessage)}
+                </p>
+              </div>
+              {(scheduleStatus?.liveUrl || (!scheduleStatus && liveUrl)) && (
+                <a
+                  href={scheduleStatus?.liveUrl ?? liveUrl ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline shrink-0"
+                >
+                  Watch
+                </a>
+              )}
             </div>
-            <p className="text-sm text-stone-800 dark:text-stone-200 font-medium">{proposedItem}</p>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Ordering via DoorDash...</p>
-            {liveUrl && (
-              <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5 block">
-                Watch live
-              </a>
-            )}
           </div>
         )}
-        {status === "success" && (
-          <div className="w-full text-center">
-            <p className="text-sm text-rust-600 dark:text-rust-400 font-medium">Added to cart</p>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{proposedItem}</p>
-            <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
-              Order another
-            </button>
+        {effectiveStatus === "success" && (
+          <div className={cardBase}>
+            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+              {scheduleStatus ? displayMeal : proposedItem}
+            </p>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <DoorDashBadge dotStatus="success" />
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                Added to cart
+                {scheduleStatus?.scheduledFor && (
+                  <span className="text-rust-600 dark:text-rust-400 ml-1">· ~{scheduleStatus.scheduledFor}</span>
+                )}
+              </span>
+              {(scheduleStatus?.liveUrl || (!scheduleStatus && liveUrl)) && (
+                <a
+                  href={scheduleStatus?.liveUrl ?? liveUrl ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline"
+                >
+                  Watch
+                </a>
+              )}
+              {!scheduleStatus && (
+                <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
+                  Order another
+                </button>
+              )}
+            </div>
           </div>
         )}
-        {status === "error" && (
-          <div className="w-full text-center">
-            <p className="text-sm text-stone-700 dark:text-stone-300 font-medium">Failed</p>
-            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">{error}</p>
-            <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1">
-              Try again
-            </button>
+        {effectiveStatus === "error" && (
+          <div className={cardBase}>
+            <p className="text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+              {scheduleStatus ? displayMeal : proposedItem}
+            </p>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 line-clamp-2">
+              {scheduleStatus?.error ?? error}
+            </p>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <button
+                type="button"
+                onClick={scheduleStatus ? (onClearScheduleError ?? openApproveFlow) : openApproveFlow}
+                className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -250,24 +344,27 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
         </div>
       )}
       {status === "ordering" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-rust-50/80 dark:bg-rust-950/20 border border-rust-200/60 dark:border-rust-800/40">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
           <div className="flex gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "0ms" }} />
             <span className="w-1.5 h-1.5 rounded-full bg-rust-600 animate-bounce" style={{ animationDelay: "150ms" }} />
             <span className="w-1.5 h-1.5 rounded-full bg-rust-500 animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
-          <span className="text-sm text-stone-800 dark:text-stone-200 font-medium">{proposedItem}</span>
+          <div>
+            <p className="text-sm font-medium text-stone-800 dark:text-stone-200">{proposedItem}</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400">{progressMessage}</p>
+          </div>
           {liveUrl && (
-            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 dark:text-blue-400 hover:underline ml-1">
+            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline ml-1">
               Watch
             </a>
           )}
         </div>
       )}
       {status === "success" && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-rust-50/80 dark:bg-rust-950/20 border border-rust-200/60 dark:border-rust-800/40">
-          <span className="text-sm text-rust-600 dark:text-rust-400 font-medium">{proposedItem} added to cart</span>
-          <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
+          <span className="text-sm font-medium text-stone-800 dark:text-stone-200">{proposedItem} added to cart</span>
+          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
             Again
           </button>
         </div>
@@ -275,7 +372,7 @@ export default function TakeoutOrderButton({ variant = "button", searchIntent, s
       {status === "error" && (
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-stone-50 dark:bg-stone-900/80 border border-stone-200 dark:border-stone-700">
           <span className="text-sm text-stone-700 dark:text-stone-300">{error}</span>
-          <button type="button" onClick={openApproveFlow} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          <button type="button" onClick={openApproveFlow} className="text-xs font-medium text-rust-600 dark:text-rust-400 hover:underline">
             Try again
           </button>
         </div>

@@ -21,6 +21,7 @@ export default function MealPlanPage() {
     activePlan?._id ? { mealPlanId: activePlan._id } : "skip"
   );
   const generateGroceryList = useMutation(api.groceryList.generate);
+  const upsertMeal = useMutation(api.mealPlans.upsertMeal);
   const [chatOpen, setChatOpen] = useState(false);
   const [fridgeOpen, setFridgeOpen] = useState(true);
   const [expandedRecipe, setExpandedRecipe] = useState<ExpandedRecipe>(null);
@@ -31,6 +32,23 @@ export default function MealPlanPage() {
   const [instacartResult, setInstacartResult] = useState<string | null>(null);
   const [instacartError, setInstacartError] = useState<string | null>(null);
   const [selectedGroceryIndices, setSelectedGroceryIndices] = useState<Set<number>>(new Set());
+  // Optimistic takeout overrides: when user switches meal, use this for calories immediately (key: "day-mealType")
+  const [pendingTakeoutOverrides, setPendingTakeoutOverrides] = useState<Record<string, string>>({});
+  // Schedule all: status per slot (key: dateStr-planDayName-mealType), shown inline on cards
+  type ScheduleSlotStatus = "ordering" | "success" | "error";
+  const [scheduleAllStatus, setScheduleAllStatus] = useState<
+    Record<
+      string,
+      {
+        status: ScheduleSlotStatus;
+        progressMessage?: string;
+        liveUrl?: string;
+        scheduledFor?: string;
+        error?: string;
+      }
+    >
+  >({});
+  const [scheduleToast, setScheduleToast] = useState<{ success: number; failed: number } | null>(null);
 
   useEffect(() => {
     setSelectedGroceryIndices(new Set());
@@ -48,8 +66,49 @@ export default function MealPlanPage() {
     );
   }
 
-  const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
   const mealTypes = ["breakfast", "lunch", "dinner"] as const;
+
+  // Rolling 7-day window: today + next 6 days (not fixed Mon–Sun)
+  const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+  const getDayName = (d: Date) => DAY_NAMES[d.getDay()]!;
+
+  const getRollingDays = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const out: { date: Date; label: string; dayName: string; planDayName: string | null }[] = [];
+    const weekStart = activePlan?.weekStartDate
+      ? new Date(activePlan.weekStartDate + "T00:00:00")
+      : null;
+    const weekEnd = weekStart ? new Date(weekStart) : null;
+    if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 6);
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const dayName = getDayName(d);
+      const label =
+        d.toLocaleDateString("en-US", { weekday: "short" }) +
+        " " +
+        d.getDate();
+      const inPlan =
+        weekStart &&
+        weekEnd &&
+        d >= weekStart &&
+        d <= weekEnd;
+      // When in plan, use dayName for Convex lookup; when outside, null (no plan meals)
+      const planDayName = inPlan ? dayName : null;
+      out.push({
+        date: d,
+        label,
+        dayName,
+        planDayName: inPlan ? dayName : null,
+      });
+    }
+    return out;
+  };
+
+  const rollingDays = getRollingDays();
+  const todayDayName = getDayName(new Date());
 
   const getMeal = (day: string, mealType: string) => {
     if (!activePlan?.meals) return null;
@@ -58,29 +117,45 @@ export default function MealPlanPage() {
     );
   };
 
-  const getDayCalories = (day: string) => {
+  const getDayCalories = (planDayName: string | null, slotDayName: string, dateStr?: string) => {
     let total = 0;
     for (const mealType of mealTypes) {
-      const meal = getMeal(day, mealType);
-      if (meal) {
-        const cal = meal.calories ?? (meal.isTakeout ? getTakeoutCalories(meal.recipeName) : undefined);
-        total += cal ?? 0;
+      const slotKey = planDayName && dateStr ? `${dateStr}-${planDayName}-${mealType}` : planDayName ? `${planDayName}-${mealType}` : null;
+      const overrideMeal = slotKey ? pendingTakeoutOverrides[slotKey] : null;
+      if (overrideMeal) {
+        total += getTakeoutCalories(overrideMeal) ?? 0;
       } else {
-        total += getCaloriesForSlot(day, mealType) ?? 0;
+        const meal = planDayName ? getMeal(planDayName, mealType) : null;
+        if (meal) {
+          const cal = meal.calories ?? (meal.isTakeout ? getTakeoutCalories(meal.recipeName) : undefined);
+          total += cal ?? 0;
+        } else {
+          total += getCaloriesForSlot(slotDayName, mealType) ?? 0;
+        }
       }
     }
     return total;
   };
 
-  const addFridgeItems = () => {
+  const addFridgeItems = (getCanonicalKey?: (name: string) => string) => {
     const labels = fridgeInput
       .split(/[,;]+/)
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => s.trim())
       .filter(Boolean);
     if (labels.length === 0) return;
-    const existing = new Set(fridgeItems.map((i) => i.label.toLowerCase()));
+    const existingLabels = new Set(fridgeItems.map((i) => i.label.toLowerCase()));
+    const existingCanonical = getCanonicalKey
+      ? new Set(fridgeItems.map((i) => getCanonicalKey(i.label)))
+      : null;
     const newItems: FridgeItem[] = labels
-      .filter((l) => !existing.has(l))
+      .filter((label) => {
+        if (existingLabels.has(label.toLowerCase())) return false;
+        if (existingCanonical && getCanonicalKey) {
+          const key = getCanonicalKey(label);
+          if (existingCanonical.has(key)) return false;
+        }
+        return true;
+      })
       .map((label) => ({ id: `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`, label }));
     setFridgeItems((prev) => [...prev, ...newItems]);
     setFridgeInput("");
@@ -88,6 +163,162 @@ export default function MealPlanPage() {
 
   const removeFridgeItem = (id: string) => {
     setFridgeItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  // Collect takeout meals from the rolling window for Schedule All
+  type TakeoutSlot = { slotKey: string; recipeName: string };
+  const getTakeoutMealsForSchedule = (): TakeoutSlot[] => {
+    if (!activePlan?.meals) return [];
+    const items: TakeoutSlot[] = [];
+    for (const { date, planDayName } of rollingDays) {
+      if (!planDayName) continue;
+      const dateStr = date.toISOString().slice(0, 10);
+      for (const mealType of mealTypes) {
+        const meal = getMeal(planDayName, mealType);
+        if (meal?.isTakeout) {
+          items.push({
+            slotKey: `${dateStr}-${planDayName}-${mealType}`,
+            recipeName: meal.recipeName,
+          });
+        }
+      }
+    }
+    return items;
+  };
+
+  const takeoutSlotsForSchedule = getTakeoutMealsForSchedule();
+  const scheduleProgress = (() => {
+    const total = takeoutSlotsForSchedule.length;
+    if (total === 0) return null;
+    const slotKeys = new Set(takeoutSlotsForSchedule.map((i) => i.slotKey));
+    let done = 0;
+    let ordering = 0;
+    for (const key of slotKeys) {
+      const s = scheduleAllStatus[key];
+      if (s?.status === "success" || s?.status === "error") done++;
+      else if (s?.status === "ordering") ordering++;
+    }
+    return { total, done, ordering };
+  })();
+
+  const toFriendlyProgress = (raw: string): string => {
+    const lower = (raw || "").toLowerCase();
+    if (lower.includes("search") || lower.includes("finding")) return "Searching for item...";
+    if (lower.includes("restaurant") || (lower.includes("click") && lower.includes("first")))
+      return "Opening restaurant...";
+    if (lower.includes("add") && (lower.includes("cart") || lower.includes("menu")))
+      return "Adding to cart...";
+    if (raw && raw.length > 50) return raw.slice(0, 47) + "...";
+    return raw || "Working...";
+  };
+
+  const handleScheduleAll = async () => {
+    const items = getTakeoutMealsForSchedule();
+    if (items.length === 0) return;
+
+    setScheduleAllStatus(
+      Object.fromEntries(
+        items.map((i) => [i.slotKey, { status: "ordering" as ScheduleSlotStatus, progressMessage: "Starting..." }])
+      )
+    );
+    setScheduleToast(null);
+
+    const getScheduledFor = () => {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() + 35);
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    };
+
+    const results = await Promise.all(
+      items.map(async ({ slotKey, recipeName }): Promise<"success" | "error"> => {
+        try {
+          const res = await fetch("/api/doordash", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ searchIntent: recipeName, stream: true }),
+          });
+
+          const contentType = res.headers.get("content-type") ?? "";
+          if (contentType.includes("text/event-stream")) {
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            if (!reader) throw new Error("No response body");
+            let buffer = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  if (data.type === "step") {
+                    setScheduleAllStatus((prev) => ({
+                      ...prev,
+                      [slotKey]: {
+                        ...prev[slotKey],
+                        status: "ordering",
+                        progressMessage: toFriendlyProgress(data.message ?? ""),
+                      },
+                    }));
+                  } else if (data.type === "done") {
+                    setScheduleAllStatus((prev) => ({
+                      ...prev,
+                      [slotKey]: {
+                        status: "success",
+                        liveUrl: data.liveUrl ?? undefined,
+                        scheduledFor: getScheduledFor(),
+                      },
+                    }));
+                    return "success";
+                  } else if (data.type === "error") {
+                    throw new Error(data.error ?? "Order failed");
+                  }
+                } catch (e) {
+                  if (e instanceof SyntaxError) continue;
+                  throw e;
+                }
+              }
+            }
+            throw new Error("Connection interrupted");
+          }
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setScheduleAllStatus((prev) => ({
+              ...prev,
+              [slotKey]: { status: "error", error: data?.error ?? data?.details ?? `HTTP ${res.status}` },
+            }));
+            return "error";
+          }
+          setScheduleAllStatus((prev) => ({
+            ...prev,
+            [slotKey]: {
+              status: "success",
+              liveUrl: data.liveUrl,
+              scheduledFor: getScheduledFor(),
+            },
+          }));
+          return "success";
+        } catch (err) {
+          setScheduleAllStatus((prev) => ({
+            ...prev,
+            [slotKey]: {
+              status: "error",
+              error: err instanceof Error ? err.message : "Request failed",
+            },
+          }));
+          return "error";
+        }
+      })
+    );
+
+    const success = results.filter((r) => r === "success").length;
+    const failed = results.filter((r) => r === "error").length;
+    setScheduleToast({ success, failed });
+    setTimeout(() => setScheduleToast(null), 5000);
   };
 
   // Maps ingredient labels → Spoonacular CDN slugs. Source: https://img.spoonacular.com/ingredients_100x100/{slug}.jpg
@@ -146,6 +377,7 @@ export default function MealPlanPage() {
     milk: "milk",
     cheese: "cheddar-cheese",
     "cream cheese": "cream-cheese",
+    beans: "black-beans",
     honey: "honey",
     sugar: "sugar",
     vinegar: "vinegar",
@@ -233,16 +465,40 @@ export default function MealPlanPage() {
     "kidney beans": "kidney-beans",
     chickpeas: "chickpeas",
     quinoa: "quinoa",
+    jalapeno: "pepper", jalapeño: "pepper", jalapeños: "pepper", serrano: "pepper", serranos: "pepper",
+    habanero: "pepper", habaneros: "pepper", poblano: "bell-pepper", poblanos: "bell-pepper",
+    anaheim: "bell-pepper", "chili pepper": "pepper", "chili peppers": "pepper",
+  };
+
+  // Unknown ingredient → closest relative we have (for image slug + emoji fallback)
+  const INGREDIENT_RELATIVE_MAP: Record<string, string> = {
+    jalapeno: "pepper", jalapeño: "pepper", jalapeños: "pepper", serrano: "pepper", serranos: "pepper",
+    habanero: "pepper", habaneros: "pepper", poblano: "bell pepper", poblanos: "bell pepper",
+    anaheim: "bell pepper", cayenne: "pepper", chipotle: "pepper", paprika: "pepper",
+    "chili pepper": "pepper", "chili peppers": "pepper", "red chili": "pepper", "green chili": "pepper",
+    oregano: "basil", thyme: "basil", rosemary: "basil", "bay leaf": "basil", "bay leaves": "basil",
+    mint: "basil", dill: "parsley", tarragon: "parsley", chive: "scallions", chives: "scallions",
+    leek: "onion", leeks: "onion", shallot: "onion", shallots: "onion",
+    "sweet potato": "potato", "sweet potatoes": "potato", yam: "potato", yams: "potato",
+    turnip: "potato", turnips: "potato", radish: "carrot", radishes: "carrot", beet: "carrot", beets: "carrot",
+    cucumber: "zucchini", cucumbers: "zucchini", eggplant: "tomato", "bell pepper": "bell pepper",
+    "kidney bean": "black beans", "pinto bean": "black beans", "navy bean": "black beans",
+    "cannellini bean": "chickpeas", "white bean": "chickpeas", "black bean": "black beans",
+    "soy sauce": "soy sauce", "worcestershire": "vinegar", mustard: "vinegar",
+    "maple syrup": "honey", "agave": "honey", molasses: "honey",
   };
 
   const getIngredientImageUrl = (label: string) => {
     const key = label.toLowerCase().trim().replace(/\s+/g, " ");
     const words = key.split(/\s+/);
+    const lastWord = words[words.length - 1];
+    const relative = INGREDIENT_RELATIVE_MAP[key] ?? (lastWord ? INGREDIENT_RELATIVE_MAP[lastWord] : undefined);
     const rawSlug =
       INGREDIENT_IMAGE_MAP[key] ??
-      (words.length > 1 ? INGREDIENT_IMAGE_MAP[words[words.length - 1]!] : undefined) ??
+      (lastWord ? INGREDIENT_IMAGE_MAP[lastWord] : undefined) ??
+      (relative ? INGREDIENT_IMAGE_MAP[relative] : undefined) ??
       key;
-    const slug = rawSlug
+    const slug = String(rawSlug)
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "");
     return `https://img.spoonacular.com/ingredients_100x100/${slug}.jpg`;
@@ -258,22 +514,52 @@ export default function MealPlanPage() {
     blueberry: "🫐", blueberries: "🫐", raspberry: "🍇", raspberries: "🍇", blackberry: "🫐", blackberries: "🫐",
     chicken: "🍗", beef: "🥩", pork: "🥩", salmon: "🐟", shrimp: "🍤", egg: "🥚", eggs: "🥚",
     cheese: "🧀", milk: "🥛", butter: "🧈", bread: "🍞", rice: "🍚", pasta: "🍝", flour: "🌾",
-    honey: "🍯", sugar: "🍬", salt: "🧂", "olive oil": "🫒", olive: "🫒", coconut: "🥥", tofu: "🧈", lentils: "🫘",
+    honey: "🍯", sugar: "🍬", salt: "🧂", "olive oil": "🫒", olive: "🫒", coconut: "🥥", tofu: "🧈", lentils: "🫘", beans: "🫘",
     peas: "🫛", corn: "🌽", asparagus: "🌿", cauliflower: "🥦", cabbage: "🥬",
     quinoa: "🌾", oats: "🌾", almond: "🥜", almonds: "🥜", walnut: "🥜", walnuts: "🥜",
     scallions: "🧅", "green onions": "🧅", vinegar: "🫙", "soy sauce": "🫙", "sesame oil": "🫒",
     "chicken broth": "🍗", "vegetable broth": "🫙", "beef broth": "🥩",
     water: "💧", ice: "🧊", oil: "🫒", cream: "🥛", yogurt: "🥛", "sour cream": "🥛",
+    jalapeno: "🌶️", jalapeño: "🌶️", jalapeños: "🌶️", serrano: "🌶️", habanero: "🌶️",
+    poblano: "🫑", anaheim: "🫑", cayenne: "🌶️", chipotle: "🌶️",
   };
   const getIngredientFallback = (label: string) => {
     const key = label.toLowerCase().trim().replace(/\s+/g, " ");
     const words = key.split(/\s+/);
-    const emoji = INGREDIENT_EMOJI_MAP[key] ?? INGREDIENT_EMOJI_MAP[words[words.length - 1]!];
+    const lastWord = words[words.length - 1];
+    const emoji =
+      INGREDIENT_EMOJI_MAP[key] ??
+      (lastWord ? INGREDIENT_EMOJI_MAP[lastWord] : undefined) ??
+      (lastWord ? INGREDIENT_EMOJI_MAP[INGREDIENT_RELATIVE_MAP[lastWord] ?? ""] : undefined) ??
+      INGREDIENT_EMOJI_MAP[INGREDIENT_RELATIVE_MAP[key] ?? ""];
     return emoji ?? label.charAt(0).toUpperCase();
   };
 
   // Client-side synonym map for grocery list deduplication
   const GROCERY_SYNONYMS: Record<string, string> = {
+    // Cheese — any type → cheese
+    cheddar: "cheese",
+    "cheddar cheese": "cheese",
+    "Mexican cheese": "cheese",
+    mozzarella: "cheese",
+    "mozzarella cheese": "cheese",
+    parmesan: "cheese",
+    "parmesan cheese": "cheese",
+    "cream cheese": "cheese",
+    feta: "cheese",
+    "feta cheese": "cheese",
+    gouda: "cheese",
+    "gouda cheese": "cheese",
+    "swiss cheese": "cheese",
+    "monterey jack": "cheese",
+    "colby jack": "cheese",
+    "pepper jack": "cheese",
+    ricotta: "cheese",
+    "ricotta cheese": "cheese",
+    "cottage cheese": "cheese",
+    "goat cheese": "cheese",
+    "blue cheese": "cheese",
+    "provolone": "cheese",
     "pepper flakes": "pepper",
     "red pepper flakes": "pepper",
     "crushed red pepper": "pepper",
@@ -305,10 +591,34 @@ export default function MealPlanPage() {
     "cherry tomato": "tomato",
     "cherry tomatoes": "tomato",
     tomatoes: "tomato",
+    // Beans — any type → beans
+    "black beans": "beans",
+    "black bean": "beans",
+    "kidney beans": "beans",
+    "kidney bean": "beans",
+    "pinto beans": "beans",
+    "pinto bean": "beans",
+    "navy beans": "beans",
+    "navy bean": "beans",
+    "cannellini beans": "beans",
+    "cannellini bean": "beans",
+    "white beans": "beans",
+    "white bean": "beans",
+    "garbanzo beans": "beans",
+    "garbanzo bean": "beans",
+    chickpeas: "beans",
+    chickpea: "beans",
+    "green beans": "beans",
+    "green bean": "beans",
+    "refried beans": "beans",
+    "great northern beans": "beans",
+    "lima beans": "beans",
+    "fava beans": "beans",
   };
 
   const toSingular = (word: string): string => {
     const w = word.toLowerCase();
+    if (["beans", "cheese", "cream"].includes(w)) return w; // Keep category names as-is
     if (w.endsWith("ies") && w.length > 4) return w.slice(0, -3) + "y";
     if (w.endsWith("es") && !w.endsWith("ss") && w.length > 3) return w.slice(0, -2);
     if (w.endsWith("s") && !w.endsWith("ss") && w.length > 2) return w.slice(0, -1);
@@ -331,6 +641,25 @@ export default function MealPlanPage() {
     return fridgeItems.some(
       (f) => getGroceryCanonicalKey(f.label) === groceryKey
     );
+  };
+
+  // Dedupe fridge display: group by canonical key, show one card per type (e.g. cheddar + Mexican cheese → "cheese")
+  const getDedupedFridgeDisplay = () => {
+    const byKey = new Map<string, { displayLabel: string; ids: string[] }>();
+    for (const item of fridgeItems) {
+      const key = getGroceryCanonicalKey(item.label);
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.ids.push(item.id);
+      } else {
+        byKey.set(key, { displayLabel: key, ids: [item.id] });
+      }
+    }
+    return Array.from(byKey.entries()).map(([groupKey, { displayLabel, ids }]) => ({
+      groupKey,
+      displayLabel,
+      ids,
+    }));
   };
 
   const getDedupedGroceryItems = () => {
@@ -410,24 +739,39 @@ export default function MealPlanPage() {
                   </h1>
                   <button
                     type="button"
-                    className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors"
+                    onClick={handleScheduleAll}
+                    disabled={takeoutSlotsForSchedule.length === 0 || (scheduleProgress?.ordering ?? 0) > 0}
+                    className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Schedule all deliveries
+                    {scheduleProgress && scheduleProgress.ordering > 0 ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="flex gap-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </span>
+                        Ordering {scheduleProgress.done + scheduleProgress.ordering} of {scheduleProgress.total}…
+                      </span>
+                    ) : (
+                      "Schedule all deliveries"
+                    )}
                   </button>
                 </div>
 
                 {/* Day cards + nutrition widget */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
-                  {days.map((day) => {
-                    const dayCalories = getDayCalories(day);
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
+                  {rollingDays.map(({ date, label, dayName, planDayName }) => {
+                    const dateStr = date.toISOString().slice(0, 10);
+                    const dayCalories = getDayCalories(planDayName, dayName, dateStr);
+                    const dayKey = `${dayName}-${date.toISOString().slice(0, 10)}`;
                     return (
                       <div
-                        key={day}
-                        className="rounded-xl border border-stone-200/60 dark:border-stone-700/50 bg-white/80 dark:bg-stone-800/60 p-4 shadow-sm"
+                        key={dayKey}
+                        className="rounded-xl border border-stone-200/60 dark:border-stone-700/50 bg-white/80 dark:bg-stone-800/60 p-4 shadow-sm min-h-[280px] flex flex-col"
                       >
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-semibold text-stone-800 dark:text-stone-200 capitalize">
-                            {day}
+                          <h3 className="font-semibold text-stone-800 dark:text-stone-200">
+                            {label}
                           </h3>
                           {dayCalories > 0 && (
                             <span className="text-sm font-medium text-rust-600 dark:text-rust-400">
@@ -435,12 +779,12 @@ export default function MealPlanPage() {
                             </span>
                           )}
                         </div>
-                        <div className="space-y-0">
+                        <div className="space-y-0 flex-1 min-h-0">
                           {mealTypes.map((mealType) => {
-                            const meal = getMeal(day, mealType);
-                            const isExpanded = expandedRecipe?.day === day && expandedRecipe?.mealType === mealType;
+                            const meal = planDayName ? getMeal(planDayName, mealType) : null;
+                            const isExpanded = expandedRecipe?.day === dayName && expandedRecipe?.mealType === mealType;
                             return (
-                              <div key={`${day}-${mealType}`} className="border-b border-stone-100 dark:border-stone-700/40 last:border-0 pt-3 pb-3 last:pb-0 min-h-[72px] flex flex-col">
+                              <div key={`${dayName}-${mealType}`} className="border-b border-stone-100 dark:border-stone-700/40 last:border-0 pt-2.5 pb-2.5 last:pb-0 min-h-[56px] flex flex-col">
                                 <p className="text-xs font-medium text-stone-500 dark:text-stone-400 capitalize mb-1 shrink-0">
                                   {mealType}
                                 </p>
@@ -449,7 +793,34 @@ export default function MealPlanPage() {
                                     <TakeoutOrderButton
                                       variant="card"
                                       searchIntent={meal.recipeName}
-                                      slotKey={`${day}-${mealType}`}
+                                      slotKey={`${dayName}-${mealType}`}
+                                      scheduleStatus={scheduleAllStatus[`${dateStr}-${planDayName}-${mealType}`]}
+                                      onClearScheduleError={() =>
+                                        setScheduleAllStatus((prev) => {
+                                          const next = { ...prev };
+                                          delete next[`${dateStr}-${planDayName}-${mealType}`];
+                                          return next;
+                                        })
+                                      }
+                                      onMealChange={
+                                        planDayName && activePlan?._id
+                                          ? async (mealName) => {
+                                              const slotKey = `${dateStr}-${planDayName}-${mealType}`;
+                                              setPendingTakeoutOverrides((prev) => ({ ...prev, [slotKey]: mealName }));
+                                              const cal = getTakeoutCalories(mealName);
+                                              await upsertMeal({
+                                                mealPlanId: activePlan._id,
+                                                day: planDayName,
+                                                mealType,
+                                                recipeId: "takeout-doordash",
+                                                recipeName: mealName,
+                                                isTakeout: true,
+                                                isManualOverride: true,
+                                                calories: cal ?? undefined,
+                                              });
+                                            }
+                                          : undefined
+                                      }
                                     />
                                   ) : (
                                   <div>
@@ -458,7 +829,7 @@ export default function MealPlanPage() {
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            const nextExpanded = isExpanded ? null : { day, mealType };
+                                            const nextExpanded = isExpanded ? null : { day: dayName, mealType };
                                             setExpandedRecipe(nextExpanded);
                                           }}
                                           className="text-left w-full text-sm font-medium text-stone-800 dark:text-stone-200 hover:text-rust-600 dark:hover:text-rust-400 transition-colors"
@@ -533,8 +904,38 @@ export default function MealPlanPage() {
                                   </div>
                                   )
                                 ) : (
-                                  <div className="flex-1 flex items-start">
-                                    <TakeoutOrderButton variant="card" slotKey={`${day}-${mealType}`} />
+                                  <div className="flex items-start">
+                                    <TakeoutOrderButton
+                                      variant="card"
+                                      slotKey={`${dayName}-${mealType}`}
+                                      scheduleStatus={scheduleAllStatus[`${dateStr}-${planDayName}-${mealType}`]}
+                                      onClearScheduleError={() =>
+                                        setScheduleAllStatus((prev) => {
+                                          const next = { ...prev };
+                                          delete next[`${dateStr}-${planDayName}-${mealType}`];
+                                          return next;
+                                        })
+                                      }
+                                      onMealChange={
+                                        planDayName && activePlan?._id
+                                          ? async (mealName) => {
+                                              const slotKey = `${dateStr}-${planDayName}-${mealType}`;
+                                              setPendingTakeoutOverrides((prev) => ({ ...prev, [slotKey]: mealName }));
+                                              const cal = getTakeoutCalories(mealName);
+                                              await upsertMeal({
+                                                mealPlanId: activePlan._id,
+                                                day: planDayName,
+                                                mealType,
+                                                recipeId: "takeout-doordash",
+                                                recipeName: mealName,
+                                                isTakeout: true,
+                                                isManualOverride: true,
+                                                calories: cal ?? undefined,
+                                              });
+                                            }
+                                          : undefined
+                                      }
+                                    />
                                   </div>
                                 )}
                               </div>
@@ -544,27 +945,29 @@ export default function MealPlanPage() {
                       </div>
                     );
                   })}
-                  {/* Nutrition widget - macro ring, next to Sunday */}
+                  {/* Nutrition widget - today's calories & macros (ring) */}
                   {activePlan.meals && activePlan.meals.length > 0 && (() => {
-                    const nonSkipped = activePlan.meals.filter((m: any) => !m.isSkipped);
-                    const totalCal = days.reduce((s, d) => s + getDayCalories(d), 0);
-                    const totalProtein = nonSkipped.reduce((s: number, m: any) => s + (m.protein || 0), 0);
-                    const totalCarbs = nonSkipped.reduce((s: number, m: any) => s + (m.carbs || 0), 0);
-                    const totalFat = nonSkipped.reduce((s: number, m: any) => s + (m.fat || 0), 0);
-                    const numDays = Math.max(1, days.filter((d) => getDayCalories(d) > 0).length);
-                    const numMeals = nonSkipped.length;
-                    const calPerDay = Math.round(totalCal / numDays);
-                    const proteinPerDay = Math.round(totalProtein / numDays);
-                    const carbsPerDay = Math.round(totalCarbs / numDays);
-                    const fatPerDay = Math.round(totalFat / numDays);
-                    const macroCal = proteinPerDay * 4 + carbsPerDay * 4 + fatPerDay * 9;
-                    const pctP = macroCal > 0 ? (proteinPerDay * 4) / macroCal : 0.33;
-                    const pctC = macroCal > 0 ? (carbsPerDay * 4) / macroCal : 0.33;
-                    const pctF = macroCal > 0 ? (fatPerDay * 9) / macroCal : 0.34;
+                    const todaySlot = rollingDays[0];
+                    const todayPlanDay = todaySlot?.planDayName ?? null;
+                    const todaySlotDay = todaySlot?.dayName ?? todayDayName;
+                    const todayDateStr = todaySlot?.date ? todaySlot.date.toISOString().slice(0, 10) : undefined;
+                    const todayCal = getDayCalories(todayPlanDay, todaySlotDay, todayDateStr);
+                    const todayMeals = todayPlanDay
+                      ? mealTypes
+                          .map((mt) => getMeal(todayPlanDay, mt))
+                          .filter((m): m is NonNullable<typeof m> => m != null)
+                      : [];
+                    const todayProtein = todayMeals.reduce((s, m) => s + (m.protein ?? 0), 0);
+                    const todayCarbs = todayMeals.reduce((s, m) => s + (m.carbs ?? 0), 0);
+                    const todayFat = todayMeals.reduce((s, m) => s + (m.fat ?? 0), 0);
+                    const macroCal = todayProtein * 4 + todayCarbs * 4 + todayFat * 9;
+                    const pctP = macroCal > 0 ? (todayProtein * 4) / macroCal : 0.33;
+                    const pctC = macroCal > 0 ? (todayCarbs * 4) / macroCal : 0.33;
+                    const pctF = macroCal > 0 ? (todayFat * 9) / macroCal : 0.34;
                     const p1 = pctP * 100;
                     const p2 = (pctP + pctC) * 100;
                     return (
-                      <div className="rounded-2xl border border-stone-200/60 dark:border-stone-700/50 bg-white/90 dark:bg-stone-800/60 p-4 flex flex-col items-center justify-center gap-3">
+                      <div className="rounded-2xl border border-stone-200/60 dark:border-stone-700/50 bg-white/90 dark:bg-stone-800/60 p-4 flex flex-col items-center justify-center gap-3 min-h-[280px]">
                         <div
                           className="relative w-32 h-32 rounded-full shrink-0"
                           style={{
@@ -573,22 +976,19 @@ export default function MealPlanPage() {
                         >
                           <div className="absolute inset-[24%] rounded-full bg-[#fdfbf8] dark:bg-stone-800/90" />
                           <div className="absolute inset-[24%] flex flex-col items-center justify-center rounded-full pointer-events-none">
-                            <span className="text-lg font-bold text-stone-800 dark:text-stone-100 leading-none">{calPerDay}</span>
-                            <span className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">cal/day</span>
+                            <span className="text-lg font-bold text-stone-800 dark:text-stone-100 leading-none">{Math.round(todayCal)}</span>
+                            <span className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">cal today</span>
                           </div>
                         </div>
                         <div className="text-sm text-stone-600 dark:text-stone-400 text-center leading-tight">
-                          <span className="text-blue-600 dark:text-blue-400">P {proteinPerDay}g</span>
+                          <span className="text-blue-600 dark:text-blue-400">P {Math.round(todayProtein)}g</span>
                           <span className="mx-1.5 text-stone-300 dark:text-stone-600">·</span>
-                          <span className="text-rust-600 dark:text-rust-400">C {carbsPerDay}g</span>
+                          <span className="text-rust-600 dark:text-rust-400">C {Math.round(todayCarbs)}g</span>
                           <span className="mx-1.5 text-stone-300 dark:text-stone-600">·</span>
-                          <span className="text-stone-600 dark:text-stone-400">F {fatPerDay}g</span>
+                          <span className="text-stone-600 dark:text-stone-400">F {Math.round(todayFat)}g</span>
                         </div>
                         <p className="text-xs text-stone-500 dark:text-stone-400 text-center">
-                          {numMeals} meal{numMeals !== 1 ? "s" : ""} · {numDays} day{numDays !== 1 ? "s" : ""}
-                        </p>
-                        <p className="text-xs text-stone-500 dark:text-stone-400 text-center">
-                          Total: {Math.round(totalCal)} cal
+                          {todayMeals.length} meal{todayMeals.length !== 1 ? "s" : ""} today
                         </p>
                       </div>
                     );
@@ -631,7 +1031,7 @@ export default function MealPlanPage() {
                   />
                   <button
                     type="button"
-                    onClick={addFridgeItems}
+                    onClick={() => addFridgeItems(getGroceryCanonicalKey)}
                     className="px-4 py-2 rounded-full bg-rust-500 hover:bg-rust-600 text-white text-sm font-semibold shrink-0 transition-colors"
                   >
                     Add
@@ -639,14 +1039,14 @@ export default function MealPlanPage() {
                 </div>
                 <div className="relative rounded-xl border border-stone-200 dark:border-stone-600 bg-stone-50/50 dark:bg-stone-800/50 min-h-[140px] p-3">
                   <div className="flex flex-wrap gap-2 content-start">
-                    {fridgeItems.map((item) => (
+                    {getDedupedFridgeDisplay().map(({ groupKey, displayLabel, ids }) => (
                       <div
-                        key={item.id}
+                        key={groupKey}
                         className="group relative flex flex-col items-center gap-1 px-2 py-2 rounded-xl bg-white dark:bg-stone-700/80 border border-stone-200 dark:border-stone-600 hover:border-rust-300 dark:hover:border-rust-700 transition-colors"
                       >
                         <div className="relative w-10 h-10 shrink-0">
                           <img
-                            src={getIngredientImageUrl(item.label)}
+                            src={getIngredientImageUrl(displayLabel)}
                             alt=""
                             className="w-10 h-10 rounded-lg object-cover"
                             onError={(e) => {
@@ -655,20 +1055,20 @@ export default function MealPlanPage() {
                             }}
                           />
                           <span
-                            className="hidden absolute inset-0 w-10 h-10 rounded-lg bg-stone-100 dark:bg-stone-700 flex items-center justify-center text-lg font-semibold text-stone-600 dark:text-stone-400"
+                            className="hidden absolute inset-0 w-10 h-10 rounded-lg flex items-center justify-center text-[22px] leading-none font-semibold text-stone-600 dark:text-stone-400"
                             aria-hidden
                           >
-                            {getIngredientFallback(item.label)}
+                            {getIngredientFallback(displayLabel)}
                           </span>
                         </div>
                         <span className="text-[10px] font-medium text-stone-600 dark:text-stone-400 max-w-[70px] truncate text-center">
-                          {item.label}
+                          {displayLabel}
                         </span>
                         <button
                           type="button"
-                          onClick={() => removeFridgeItem(item.id)}
+                          onClick={() => ids.forEach((id) => removeFridgeItem(id))}
                           className="absolute -top-0.5 -right-0.5 opacity-0 group-hover:opacity-100 w-4 h-4 rounded-full bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold flex items-center justify-center transition-opacity"
-                          aria-label={`Remove ${item.label}`}
+                          aria-label={`Remove ${displayLabel}`}
                         >
                           ×
                         </button>
@@ -746,7 +1146,7 @@ export default function MealPlanPage() {
                                 }}
                               />
                               <span
-                                className="hidden absolute inset-0 w-full h-full rounded-lg bg-stone-100 dark:bg-stone-700 flex items-center justify-center text-xl font-semibold text-stone-600 dark:text-stone-400"
+                                className="hidden absolute inset-0 w-full h-full rounded-lg flex items-center justify-center text-[22px] leading-none font-semibold text-stone-600 dark:text-stone-400"
                                 aria-hidden
                               >
                                 {getIngredientFallback(displayName)}
@@ -913,6 +1313,21 @@ export default function MealPlanPage() {
           <div className="flex-1 min-h-0">
             <Chat variant="panel" placeholder="Swap Thursday dinner to pasta..." />
           </div>
+        </div>
+      )}
+
+      {/* Schedule completion toast */}
+      {scheduleToast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-sm font-medium shadow-lg border border-stone-700 dark:border-stone-300">
+          {scheduleToast.failed === 0 ? (
+            <>All {scheduleToast.success} added to cart</>
+          ) : scheduleToast.success === 0 ? (
+            <>All {scheduleToast.failed} failed — tap Retry on each card</>
+          ) : (
+            <>
+              {scheduleToast.success} added to cart · {scheduleToast.failed} failed
+            </>
+          )}
         </div>
       )}
 

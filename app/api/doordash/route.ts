@@ -195,6 +195,7 @@ export async function POST(req: NextRequest) {
   let twoFACode: string | undefined;
   let sessionIdFromClient: string | undefined;
   let useChipotleCsv = false;
+  let streamProgress = false;
   try {
     const body = await req.json();
     if (body?.searchIntent && typeof body.searchIntent === "string") {
@@ -202,6 +203,7 @@ export async function POST(req: NextRequest) {
     }
     if (body?.useChipotleCsv === true) useChipotleCsv = true;
     if (body?.forceCredentials === true) forceCredentials = true;
+    if (body?.stream === true) streamProgress = true;
     if (body?.phase === "2fa") {
       phase = "2fa";
       twoFACode = typeof body?.code === "string" ? body.code.trim() : undefined;
@@ -467,9 +469,55 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const runWithStreaming = async () => {
+    const runHandle = client.run(effectiveTask, runOptions);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const step of runHandle) {
+            const msg = (step as { nextGoal?: string; number?: number }).nextGoal ?? `Step ${(step as { number?: number }).number ?? "?"}`;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "step", message: msg })}\n\n`));
+          }
+          const result = runHandle.result;
+          const elapsedMs = Date.now() - startMs;
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: "done",
+                success: true,
+                output: result?.output ?? "Task completed.",
+                taskId: result?.id,
+                liveUrl: sessionLiveUrl,
+                elapsedMs,
+              })}\n\n`
+            )
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "error", error: message })}\n\n`)
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  };
+
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      if (streamProgress) {
+        return await runWithStreaming();
+      }
       const result = await client.run(effectiveTask, runOptions);
 
       const elapsedMs = Date.now() - startMs;
